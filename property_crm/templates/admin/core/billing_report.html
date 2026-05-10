@@ -1,0 +1,280 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Billing Report — Property CRM Admin{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; Billing Report
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  /* ------------------------------------------------------------------ */
+  /* Scoped styles — sits inside Django admin's existing stylesheet       */
+  /* ------------------------------------------------------------------ */
+  .billing-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  .billing-header h1 {
+    margin: 0;
+  }
+  .billing-meta {
+    color: #666;
+    font-size: 0.875rem;
+  }
+
+  /* Tier legend */
+  .tier-legend {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 2rem;
+    font-size: 0.8125rem;
+  }
+  .tier-legend strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #333;
+  }
+  .tier-item {
+    white-space: nowrap;
+  }
+
+  /* Org block */
+  .org-block {
+    margin-bottom: 2.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .org-header {
+    background: #417690;
+    color: #fff;
+    padding: 0.6rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+  .org-header .org-status {
+    font-size: 0.75rem;
+    font-weight: normal;
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+    padding: 2px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Project table */
+  .project-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  .project-table thead th {
+    background: #f2f2f2;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #ddd;
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+  }
+  .project-table thead th.num {
+    text-align: right;
+  }
+  .project-table tbody td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+  }
+  .project-table tbody td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .project-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .project-table tbody tr:hover {
+    background: #fafafa;
+  }
+
+  /* Status badges */
+  .badge {
+    display: inline-block;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .badge-active    { background: #d4edda; color: #155724; }
+  .badge-completed { background: #cce5ff; color: #004085; }
+  .badge-draft     { background: #e2e3e5; color: #383d41; }
+  .badge-na        { background: #f8d7da; color: #721c24; }
+
+  /* Org total row */
+  .org-total-row td {
+    background: #f8f8f8;
+    font-weight: 600;
+    border-top: 2px solid #ddd !important;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .org-total-row td.num {
+    text-align: right;
+  }
+
+  /* No projects */
+  .no-projects {
+    padding: 1rem;
+    color: #999;
+    font-style: italic;
+    font-size: 0.875rem;
+  }
+
+  /* Grand total */
+  .grand-total-block {
+    background: #417690;
+    color: #fff;
+    border-radius: 4px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 1rem;
+  }
+  .grand-total-block .amount {
+    font-size: 1.375rem;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #999;
+  }
+</style>
+
+<div class="billing-header">
+  <h1>Billing Report</h1>
+  <span class="billing-meta">As of {{ as_of|date:"j N Y" }}</span>
+</div>
+
+{# ── Tier Legend ── #}
+<div class="tier-legend">
+  <strong>Pricing tiers (POC demo values):</strong>
+  {% for tier in billing_tiers %}
+    <div class="tier-item">{{ tier.label }} — <strong>${{ tier.monthly_fee }}/mo</strong></div>
+  {% endfor %}
+</div>
+
+{% if not report %}
+  <div class="empty-state">No active organisations found.</div>
+{% else %}
+
+  {# ── Per-Organisation Blocks ── #}
+  {% for row in report %}
+  <div class="org-block">
+
+    <div class="org-header">
+      <span>{{ row.org.name }} &nbsp;<small style="font-weight:normal;opacity:0.8">{{ row.org.slug }}</small></span>
+      <div style="display:flex;gap:0.75rem;align-items:center;">
+        <span class="org-status">{{ row.org.billing_status }}</span>
+        <span style="font-size:0.9375rem;">${{ row.org_total|floatformat:2 }} total</span>
+      </div>
+    </div>
+
+    {% if row.projects %}
+    <table class="project-table">
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Status</th>
+          <th class="num">Lots (billed)</th>
+          <th>Tier</th>
+          <th class="num">Monthly fee</th>
+          <th>Billing start</th>
+          <th>Billing end</th>
+          <th class="num">Months</th>
+          <th class="num">Total billed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in row.projects %}
+        <tr>
+          <td>
+            <a href="{% url 'admin:projects_project_change' p.project.pk %}">
+              {{ p.project.name }}
+            </a>
+          </td>
+          <td>
+            {% if p.status == "active" %}
+              <span class="badge badge-active">Active</span>
+            {% elif p.status == "completed" %}
+              <span class="badge badge-completed">Completed</span>
+            {% elif p.status == "not_activated" %}
+              <span class="badge badge-na">Not activated</span>
+            {% else %}
+              <span class="badge badge-draft">{{ p.status }}</span>
+            {% endif %}
+          </td>
+          <td class="num">{{ p.lot_count }}</td>
+          <td>{{ p.tier_label }}</td>
+          <td class="num">${{ p.monthly_fee|floatformat:2 }}</td>
+          <td>
+            {% if p.billing_start %}{{ p.billing_start|date:"j M Y" }}{% else %}—{% endif %}
+          </td>
+          <td>
+            {% if p.billing_end %}
+              {{ p.billing_end|date:"j M Y" }}
+            {% elif p.status == "active" %}
+              <span style="color:#888;font-style:italic;">ongoing</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="num">{{ p.months_billed }}</td>
+          <td class="num"><strong>${{ p.total_billed|floatformat:2 }}</strong></td>
+        </tr>
+        {% endfor %}
+
+        {# Org subtotal row #}
+        <tr class="org-total-row">
+          <td colspan="8" class="num">{{ row.org.name }} total</td>
+          <td class="num">${{ row.org_total|floatformat:2 }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% else %}
+      <div class="no-projects">No projects found for this organisation.</div>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+
+  {# ── Grand Total ── #}
+  <div class="grand-total-block">
+    <span>Grand total — all active organisations</span>
+    <span class="amount">${{ grand_total|floatformat:2 }}</span>
+  </div>
+
+{% endif %}
+
+{% endblock %}
