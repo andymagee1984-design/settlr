@@ -4,6 +4,7 @@ import LoginPage from './features/auth/LoginPage'
 import ProtectedRoute from './routes/ProtectedRoute'
 import Layout from './components/Layout'
 import ProjectsPage from './features/projects/ProjectsPage'
+import SalesPage from './features/sales/SalesPage'
 
 const queryClient = new QueryClient()
 
@@ -22,7 +23,7 @@ export default function App() {
           >
             <Route index element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/sales" element={<div style={{ padding: '2rem' }}><h1>Sales</h1></div>} />
+            <Route path="/sales" element={<SalesPage />} />
             <Route path="/contacts" element={<div style={{ padding: '2rem' }}><h1>Contacts</h1></div>} />
             <Route path="/agencies" element={<div style={{ padding: '2rem' }}><h1>Agencies</h1></div>} />
             <Route path="/activities" element={<div style={{ padding: '2rem' }}><h1>Activities</h1></div>} />
