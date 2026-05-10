@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getProjects, getLots } from '../../api/projects'
 import type { Lot, Project } from '../../api/projects'
+import NewSaleModal from '../sales/NewSaleModal'
 
 const STATUS_COLOURS: Record<string, { bg: string; color: string; label: string }> = {
   draft:           { bg: '#f3f4f6', color: '#6b7280', label: 'Draft' },
@@ -27,21 +28,14 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function LotCard({ lot }: { lot: Lot }) {
+function LotCard({ lot, onRegister }: { lot: Lot; onRegister?: () => void }) {
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #e5e7eb',
-      borderRadius: 8,
-      padding: '14px 16px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 8,
+      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+      padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-          Lot {lot.lot_number}
-        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Lot {lot.lot_number}</div>
         <StatusBadge status={lot.status} />
       </div>
       <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'capitalize' }}>
@@ -59,11 +53,20 @@ function LotCard({ lot }: { lot: Lot }) {
         {lot.land_area != null && <span>{lot.land_area}m²</span>}
       </div>
       <div style={{ fontSize: 11, color: '#9ca3af' }}>{lot.stage_name}</div>
+      {lot.status === 'available' && onRegister && (
+        <button onClick={onRegister} style={{
+          marginTop: 4, padding: '6px 0', borderRadius: 6, fontSize: 12,
+          fontWeight: 500, background: '#111827', color: '#fff',
+          border: 'none', cursor: 'pointer', width: '100%',
+        }}>
+          Register Sale
+        </button>
+      )}
     </div>
   )
 }
 
-function LotRow({ lot }: { lot: Lot }) {
+function LotRow({ lot, onRegister }: { lot: Lot; onRegister?: () => void }) {
   return (
     <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
       <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#111827' }}>
@@ -87,6 +90,16 @@ function LotRow({ lot }: { lot: Lot }) {
         {lot.land_area ? `${lot.land_area}m²` : '—'}
       </td>
       <td style={{ padding: '10px 12px', fontSize: 12, color: '#9ca3af' }}>{lot.stage_name}</td>
+      <td style={{ padding: '10px 12px' }}>
+        {lot.status === 'available' && onRegister && (
+          <button onClick={onRegister} style={{
+            padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 500,
+            background: '#111827', color: '#fff', border: 'none', cursor: 'pointer',
+          }}>
+            Register
+          </button>
+        )}
+      </td>
     </tr>
   )
 }
@@ -95,6 +108,7 @@ export default function ProjectsPage() {
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [view, setView] = useState<'grid' | 'table'>('grid')
+  const [saleTarget, setSaleTarget] = useState<Lot | null>(null)
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -227,14 +241,16 @@ export default function ProjectsPage() {
           gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
           gap: 12,
         }}>
-          {filteredLots.map((lot: Lot) => <LotCard key={lot.id} lot={lot} />)}
+          {filteredLots.map((lot: Lot) => (
+            <LotCard key={lot.id} lot={lot} onRegister={() => setSaleTarget(lot)} />
+          ))}
         </div>
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                {['Lot', 'Type', 'Status', 'Price', 'Specs', 'Land', 'Stage'].map((h) => (
+                {['Lot', 'Type', 'Status', 'Price', 'Specs', 'Land', 'Stage', ''].map((h) => (
                   <th key={h} style={{
                     padding: '10px 12px', fontSize: 11, fontWeight: 600,
                     color: '#6b7280', textAlign: 'left', textTransform: 'uppercase',
@@ -246,10 +262,16 @@ export default function ProjectsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredLots.map((lot: Lot) => <LotRow key={lot.id} lot={lot} />)}
+              {filteredLots.map((lot: Lot) => (
+                <LotRow key={lot.id} lot={lot} onRegister={() => setSaleTarget(lot)} />
+              ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {saleTarget && (
+        <NewSaleModal lot={saleTarget} onClose={() => setSaleTarget(null)} />
       )}
     </div>
   )
