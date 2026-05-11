@@ -21,9 +21,19 @@ export interface Sale {
   project_name: string
   primary_buyer: string
   primary_buyer_name: string
+  secondary_buyer: string | null
+  agent: string | null
   status: string
   on_hold_expiry: string | null
   sale_price: number | null
+  cooling_off_waived: boolean
+  cooling_off_expiry: string | null
+  subject_to_finance: boolean
+  finance_due_date: string | null
+  approved_at: string | null
+  fallen_over_at: string | null
+  fallen_over_reason: string | null
+  settled_at: string | null
   created_at: string
 }
 
@@ -42,3 +52,18 @@ export const getSales = () =>
   client.get<any>('/sales/').then((r) =>
     Array.isArray(r.data) ? r.data : (r.data.results ?? [])
   )
+
+export const approveSale = (id: string) =>
+  client.post<Sale>(`/sales/${id}/approve/`).then((r) => r.data)
+
+export const declineSale = (id: string, reason: string) =>
+  client.post<Sale>(`/sales/${id}/decline/`, { reason }).then((r) => r.data)
+
+export const fallOverSale = (id: string, reason: string) =>
+  client.post<Sale>(`/sales/${id}/fall_over/`, { reason }).then((r) => r.data)
+
+export const submitSale = (id: string, data: FormData) =>
+  client.post<Sale>(`/sales/${id}/submit/`, data).then((r) => r.data)
+
+export const progressSale = (id: string, data: FormData) =>
+  client.post<Sale>(`/sales/${id}/progress/`, data).then((r) => r.data)

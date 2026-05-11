@@ -41,11 +41,9 @@ class SaleViewSet(viewsets.ModelViewSet):
             .prefetch_related("deposit", "commission")
         )
 
-        # External agents see only their own sales
         if self.request.user.is_external_agent:
             qs = qs.filter(agent=self.request.user.agent)
 
-        # Optional filters
         params = self.request.query_params
         if params.get("status"):
             qs = qs.filter(status=params["status"])
@@ -69,7 +67,6 @@ class SaleViewSet(viewsets.ModelViewSet):
 
         org = request.user.organisation
 
-        # Resolve FK objects — all must belong to this org
         from apps.projects.models import Lot
         from apps.contacts.models import Buyer, Agent, Referrer
 
@@ -110,10 +107,6 @@ class SaleViewSet(viewsets.ModelViewSet):
         )
         return Response(SaleSerializer(sale, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
-    # ------------------------------------------------------------------
-    # Workflow action endpoints
-    # ------------------------------------------------------------------
-
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         """POST /sales/{id}/submit/ — Workflow 02: On Hold / Declined → Pending."""
@@ -125,7 +118,14 @@ class SaleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = SubmitForApprovalSerializer(data=request.data, files=request.FILES)
+        # Update id_verified on the sale if provided
+        if request.data.get('id_verified') == 'true':
+            sale.id_verified = True
+            sale.save(update_fields=['id_verified'])
+
+        data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
+        data['attachment'] = request.FILES.get('attachment')
+        serializer = SubmitForApprovalSerializer(data=data)
         serializer.is_valid(raise_exception=True)
 
         sale = services.submit_for_approval(
@@ -165,8 +165,12 @@ class SaleViewSet(viewsets.ModelViewSet):
     def progress(self, request, pk=None):
         """POST /sales/{id}/progress/ — Workflow 04: Reserved → ... → Settled."""
         sale = self.get_object()
-        serializer = ProgressSerializer(data={**request.data, **request.FILES})
+
+        data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
+        data['file_value'] = request.FILES.get('file_value')
+        serializer = ProgressSerializer(data=data)
         serializer.is_valid(raise_exception=True)
+
         sale = services.progress_sale(
             sale=sale,
             date_value=serializer.validated_data["date_value"],

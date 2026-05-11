@@ -2,9 +2,6 @@ import axios from 'axios'
 
 const client = axios.create({
   baseURL: '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
   withCredentials: true,
 })
 
@@ -13,6 +10,10 @@ client.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('access_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // Only set JSON content type if not FormData
+  if (!(config.data instanceof FormData)) {
+    config.headers['Content-Type'] = 'application/json'
   }
   return config
 })
