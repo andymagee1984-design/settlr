@@ -1,13 +1,15 @@
+// src/features/contacts/ContactsPage.tsx
+
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getBuyers, getAgents, getSolicitors, getReferrers } from '../../api/contacts'
 import type { Buyer, Agent, Solicitor, Referrer } from '../../api/contacts'
 import ContactDetailPanel from './ContactDetailPanel'
 
-type Tab = 'buyers' | 'agents' | 'solicitors' | 'referrers'
+type Tab = 'prospects' | 'agents' | 'solicitors' | 'referrers'
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'buyers',     label: 'Buyers',     icon: 'ti-users' },
+  { key: 'prospects',  label: 'Prospects',  icon: 'ti-users' },
   { key: 'agents',     label: 'Agents',     icon: 'ti-briefcase' },
   { key: 'solicitors', label: 'Solicitors', icon: 'ti-scale' },
   { key: 'referrers',  label: 'Referrers',  icon: 'ti-link' },
@@ -67,8 +69,21 @@ function Badge({ label, color }: { label: string; color: string }) {
   )
 }
 
+const INTEREST_COLOURS: Record<string, string> = {
+  hot:  '#dc2626',
+  warm: '#f59e0b',
+  cold: '#3b82f6',
+}
+
+function fmt(n: number | null | undefined): string {
+  if (!n) return '—'
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}m`
+  if (n >= 1_000)     return `$${Math.round(n / 1_000)}k`
+  return `$${n}`
+}
+
 export default function ContactsPage() {
-  const [tab, setTab] = useState<Tab>('buyers')
+  const [tab, setTab] = useState<Tab>('prospects')
   const [search, setSearch] = useState('')
   const [selectedContact, setSelectedContact] = useState<{
     id: string
@@ -78,7 +93,7 @@ export default function ContactsPage() {
   const { data: buyers = [], isLoading: loadingBuyers } = useQuery<Buyer[]>({
     queryKey: ['buyers'],
     queryFn: getBuyers,
-    enabled: tab === 'buyers',
+    enabled: tab === 'prospects',
   })
 
   const { data: agents = [], isLoading: loadingAgents } = useQuery<Agent[]>({
@@ -103,19 +118,44 @@ export default function ContactsPage() {
 
   const q = search.toLowerCase()
 
-  const filteredBuyers = buyers.filter(b => !q || b.display_name?.toLowerCase().includes(q) || b.email?.toLowerCase().includes(q))
-  const filteredAgents = agents.filter(a => !q || `${a.first_name} ${a.last_name}`.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q))
+  const filteredBuyers     = buyers.filter(b => !q || b.display_name?.toLowerCase().includes(q) || b.email?.toLowerCase().includes(q))
+  const filteredAgents     = agents.filter(a => !q || `${a.first_name} ${a.last_name}`.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q))
   const filteredSolicitors = solicitors.filter(s => !q || `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) || s.firm_name?.toLowerCase().includes(q))
-  const filteredReferrers = referrers.filter(r => !q || `${r.first_name} ${r.last_name}`.toLowerCase().includes(q) || r.company_name?.toLowerCase().includes(q))
+  const filteredReferrers  = referrers.filter(r => !q || `${r.first_name} ${r.last_name}`.toLowerCase().includes(q) || r.company_name?.toLowerCase().includes(q))
 
-  const buyerRows = filteredBuyers.map(b => [
-    <span style={{ fontWeight: 500, color: '#111827' }}>{b.display_name}</span>,
-    <Badge label={b.buyer_type} color={b.buyer_type === 'individual' ? '#3b82f6' : b.buyer_type === 'company' ? '#8b5cf6' : '#f59e0b'} />,
-    b.email || '—',
-    b.phone || '—',
-    b.address || '—',
-    b.id_verified ? <Badge label="Verified" color="#16a34a" /> : <Badge label="Unverified" color="#6b7280" />,
-  ])
+  // Prospects tab — converted vs not split
+  const converted   = filteredBuyers.filter(b => (b as any).converted_at)
+  const unconverted = filteredBuyers.filter(b => !(b as any).converted_at)
+
+  const prospectRows = filteredBuyers.map(b => {
+    const isConverted = !!(b as any).converted_at
+    const interestLevel = (b as any).interest_level
+    const budgetMin = (b as any).budget_min
+    const budgetMax = (b as any).budget_max
+    const source    = (b as any).source
+
+    return [
+      <div>
+        <div style={{ fontWeight: 500, color: '#111827' }}>{b.display_name}</div>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+          {b.buyer_type === 'individual' ? 'Individual' : b.buyer_type === 'company' ? 'Company' : 'Trust'}
+        </div>
+      </div>,
+      isConverted
+        ? <Badge label="Purchased" color="#059669" />
+        : interestLevel
+          ? <Badge label={interestLevel.charAt(0).toUpperCase() + interestLevel.slice(1)} color={INTEREST_COLOURS[interestLevel] ?? '#6b7280'} />
+          : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>,
+      (budgetMin || budgetMax)
+        ? <span style={{ fontSize: 12 }}>{fmt(budgetMin)} – {fmt(budgetMax)}</span>
+        : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>,
+      source
+        ? <span style={{ fontSize: 12, textTransform: 'capitalize' as const }}>{source.replace(/_/g, ' ')}</span>
+        : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>,
+      b.email || '—',
+      b.phone || '—',
+    ]
+  })
 
   const agentRows = filteredAgents.map(a => [
     <span style={{ fontWeight: 500, color: '#111827' }}>{a.first_name} {a.last_name}</span>,
@@ -147,7 +187,7 @@ export default function ContactsPage() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: 0 }}>Contacts</h1>
         <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-          Buyers, agents, solicitors and referrers
+          Prospects, agents, solicitors and referrers
         </div>
       </div>
 
@@ -168,6 +208,14 @@ export default function ContactsPage() {
             >
               <i className={`ti ${t.icon}`} style={{ marginRight: 6 }} />
               {t.label}
+              {t.key === 'prospects' && buyers.length > 0 && (
+                <span style={{
+                  marginLeft: 6, fontSize: 11, padding: '1px 6px',
+                  borderRadius: 20, background: '#f3f4f6', color: '#6b7280',
+                }}>
+                  {unconverted.length} active · {converted.length} purchased
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -186,10 +234,10 @@ export default function ContactsPage() {
       {/* Content */}
       {isLoading ? (
         <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</div>
-      ) : tab === 'buyers' ? (
+      ) : tab === 'prospects' ? (
         <Table
-          headers={['Name', 'Type', 'Email', 'Phone', 'Address', 'ID']}
-          rows={buyerRows}
+          headers={['Name', 'Status / Interest', 'Budget', 'Source', 'Email', 'Phone']}
+          rows={prospectRows}
           onRowClick={(i) => setSelectedContact({ id: filteredBuyers[i].id, type: 'Buyer' })}
         />
       ) : tab === 'agents' ? (

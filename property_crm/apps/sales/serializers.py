@@ -29,18 +29,20 @@ class CommissionSerializer(serializers.ModelSerializer):
 
 
 class SaleSerializer(serializers.ModelSerializer):
-    deposit    = DepositSerializer(read_only=True)
-    commission = CommissionSerializer(read_only=True)
-    lot_number = serializers.CharField(source="lot.lot_number", read_only=True)
-    project_name = serializers.CharField(source="lot.stage.project.name", read_only=True)
+    deposit            = DepositSerializer(read_only=True)
+    commission         = CommissionSerializer(read_only=True)
+    lot_number         = serializers.CharField(source="lot.lot_number", read_only=True)
+    project_name       = serializers.CharField(source="lot.stage.project.name", read_only=True)
+    project_id         = serializers.UUIDField(source="lot.stage.project.id", read_only=True)
     primary_buyer_name = serializers.CharField(source="primary_buyer.display_name", read_only=True)
+    agent_name         = serializers.SerializerMethodField()
 
     class Meta:
         model  = Sale
         fields = [
-            "id", "lot", "lot_number", "project_name",
+            "id", "lot", "lot_number", "project_name", "project_id",
             "primary_buyer", "primary_buyer_name", "secondary_buyer",
-            "agent", "solicitor", "referrer",
+            "agent", "agent_name", "solicitor", "referrer",
             "status", "on_hold_expiry",
             "id_verified", "cooling_off_waived", "cooling_off_expiry",
             "subject_to_finance", "finance_due_date",
@@ -58,6 +60,11 @@ class SaleSerializer(serializers.ModelSerializer):
             "fallen_over_at", "fallen_over_reason",
             "settled_at", "created_at",
         ]
+
+    def get_agent_name(self, obj) -> str | None:
+        if not obj.agent_id:
+            return None
+        return f"{obj.agent.first_name} {obj.agent.last_name}".strip()
 
 
 class SaleCreateSerializer(serializers.Serializer):

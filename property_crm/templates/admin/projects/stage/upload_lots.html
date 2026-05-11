@@ -1,0 +1,118 @@
+{% extends "admin/base_site.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 960px;">
+  <h1>{{ title }}</h1>
+
+  {% if not preview %}
+  {# ── Upload form ── #}
+  <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px 24px;margin:20px 0;">
+    <p style="margin:0 0 12px;color:#374151;font-size:14px;">
+      Upload a CSV file to bulk-create lots in <strong>{{ stage.name }}</strong>.
+      All imported lots will be created with status <strong>Draft</strong>.
+    </p>
+    <p style="margin:0 0 16px;">
+      <a href="{{ template_url }}" style="font-size:13px;color:#2563eb;">
+        ↓ Download CSV template
+      </a>
+    </p>
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <table style="border-collapse:collapse;width:100%;">
+        {{ form.as_table }}
+      </table>
+      <div style="margin-top:16px;">
+        <input type="submit" value="Validate CSV" class="default"
+               style="padding:8px 18px;font-size:13px;cursor:pointer;">
+      </div>
+    </form>
+  </div>
+
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;font-size:13px;color:#6b7280;">
+    <strong style="color:#374151;">Supported columns:</strong><br>
+    <span style="color:#111827;">lot_number</span> (required),
+    <span style="color:#111827;">lot_type</span> (required — land / house_and_land / apartment / townhouse / commercial),
+    bedrooms, bathrooms, car_spaces, land_area, floor_area, aspect, level, building,
+    inclusions, floor_plan_url, initial_price, price_effective_date (YYYY-MM-DD or DD/MM/YYYY).<br><br>
+    Optional fields can be left blank. Rows with errors are skipped — valid rows still import.
+  </div>
+
+  {% else %}
+  {# ── Validation preview ── #}
+  <div style="display:flex;gap:16px;margin:20px 0;">
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 20px;flex:1;text-align:center;">
+      <div style="font-size:24px;font-weight:700;color:#15803d;">{{ valid_count }}</div>
+      <div style="font-size:12px;color:#166534;margin-top:2px;">Rows ready to import</div>
+    </div>
+    {% if invalid_count %}
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 20px;flex:1;text-align:center;">
+      <div style="font-size:24px;font-weight:700;color:#dc2626;">{{ invalid_count }}</div>
+      <div style="font-size:12px;color:#991b1b;margin-top:2px;">Rows with errors (will be skipped)</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if valid_count > 0 %}
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {# Re-post the original file with the confirm flag #}
+    <input type="hidden" name="confirm_import" value="1">
+    {{ form.as_p }}
+    <div style="margin-bottom:20px;">
+      <input type="submit" value="Confirm — import {{ valid_count }} lot{{ valid_count|pluralize }}"
+             class="default"
+             style="padding:8px 18px;font-size:13px;cursor:pointer;background:#15803d;color:#fff;border:none;border-radius:4px;">
+      <a href="{{ request.path }}" style="margin-left:12px;font-size:13px;color:#6b7280;">
+        ← Upload a different file
+      </a>
+    </div>
+  </form>
+  {% else %}
+  <p style="color:#dc2626;font-size:14px;">No valid rows found — please fix the errors below and re-upload.</p>
+  <a href="{{ request.path }}" style="font-size:13px;color:#2563eb;">← Upload a different file</a>
+  {% endif %}
+
+  {# ── Row-by-row results table ── #}
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;">
+    <thead>
+      <tr style="background:#f3f4f6;border-bottom:2px solid #e5e7eb;">
+        <th style="padding:8px 12px;text-align:left;font-weight:600;color:#374151;">Row</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600;color:#374151;">Lot #</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600;color:#374151;">Type</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600;color:#374151;">Price</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600;color:#374151;">Status</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600;color:#374151;">Errors</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in validated %}
+      <tr style="border-bottom:1px solid #f3f4f6;background:{% if v.ok %}#fff{% else %}#fef2f2{% endif %};">
+        <td style="padding:8px 12px;color:#9ca3af;">{{ v.row }}</td>
+        <td style="padding:8px 12px;font-weight:500;color:#111827;">{{ v.raw.lot_number|default:"—" }}</td>
+        <td style="padding:8px 12px;color:#374151;">{{ v.raw.lot_type|default:"—" }}</td>
+        <td style="padding:8px 12px;color:#374151;">
+          {% if v.raw.initial_price %}${{ v.raw.initial_price }}{% else %}—{% endif %}
+        </td>
+        <td style="padding:8px 12px;">
+          {% if v.ok %}
+          <span style="background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;">
+            ✓ Valid
+          </span>
+          {% else %}
+          <span style="background:#fef2f2;color:#dc2626;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;">
+            ✗ Error
+          </span>
+          {% endif %}
+        </td>
+        <td style="padding:8px 12px;color:#dc2626;font-size:12px;">
+          {% for e in v.errors %}{{ e }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

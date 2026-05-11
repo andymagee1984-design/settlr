@@ -141,8 +141,6 @@ def _validate_submission_requirements(sale: Sale):
             errors["address"] = "Residential address required."
         if not buyer.email:
             errors["email"] = "Email address required."
-        if not buyer.phone:
-            errors["phone"] = "Phone number required."
     else:
         if not buyer.entity_name:
             errors["entity_name"] = "Entity name required."
@@ -152,8 +150,6 @@ def _validate_submission_requirements(sale: Sale):
             errors["trustee_name"] = "Trustee name required."
         if not buyer.email:
             errors["email"] = "Email address required."
-        if not buyer.phone:
-            errors["phone"] = "Phone number required."
 
     if not sale.id_verified:
         errors["id_verified"] = "ID verification must be confirmed."
@@ -194,10 +190,6 @@ def decline_sale(sale: Sale, reason: str, declined_by) -> Sale:
         from rest_framework.exceptions import ValidationError
         raise ValidationError("Only pending sales can be declined.")
 
-    # Store reason in fallen_over_reason field? No — declined has its own path.
-    # Use a notes field approach: store decline reason in a dedicated field.
-    # For POC we store it in fallen_over_reason temporarily.
-    # TODO: add Sale.decline_reason field in a future migration.
     sale.status = Sale.Status.DECLINED
     sale.save(update_fields=["status", "updated_at"])
 
@@ -276,14 +268,56 @@ def progress_sale(sale: Sale, date_value, file_value, progressed_by) -> Sale:
 
 
 def _create_commission(sale: Sale):
-    """Auto-creates a pending Commission record when sale reaches Exchanged."""
-    if sale.agent and not hasattr(sale, "commission"):
-        Commission.objects.create(
-            organisation=sale.organisation,
-            sale=sale,
-            agent=sale.agent,
-            status=Commission.CommissionStatus.PENDING,
-        )
+    """
+    Auto-creates a pending Commission record when sale reaches Exchanged.
+    Uses the agent's agency default commission type and rate if set,
+    and auto-calculates the amount if enough information is available.
+    """
+    if not sale.agent_id:
+        return
+
+    # Don't create a duplicate if one already exists
+    try:
+        if sale.commission is not None:
+            return
+    except Exception:
+        pass
+
+    commission_type = None
+    rate            = None
+    flat_amount     = None
+
+    # Pull defaults from the agent's agency
+    try:
+        agency = sale.agent.agency
+        if agency.default_commission_type and agency.default_commission_rate is not None:
+            commission_type = agency.default_commission_type
+            if commission_type == "percentage":
+                rate = agency.default_commission_rate
+            else:
+                flat_amount = agency.default_commission_rate
+    except Exception:
+        pass  # agency not loaded — create commission without defaults
+
+    kwargs = {"status": Commission.CommissionStatus.PENDING}
+    if commission_type:
+        kwargs["commission_type"] = commission_type
+    if rate is not None:
+        kwargs["rate"] = rate
+    if flat_amount is not None:
+        kwargs["flat_amount"] = flat_amount
+
+    commission = Commission.objects.create(
+        organisation=sale.organisation,
+        sale=sale,
+        agent=sale.agent,
+        **kwargs,
+    )
+
+    # Auto-calculate if we have enough info
+    if commission_type and (rate is not None or flat_amount is not None) and sale.sale_price:
+        commission.calculate()
+        commission.save(update_fields=["calculated_amount"])
 
 
 # ---------------------------------------------------------------------------

@@ -3,29 +3,36 @@ import { useAuthStore } from '../store/authStore'
 
 const NAV = [
   {
+    section: 'Overview',
+    items: [
+      { to: '/',          icon: 'ti-layout-dashboard', label: 'Dashboard' },
+    ],
+  },
+  {
     section: 'Main',
     items: [
-      { to: '/projects', icon: 'ti-building-estate', label: 'Projects' },
-      { to: '/sales', icon: 'ti-file-dollar', label: 'Sales' },
+      { to: '/projects',  icon: 'ti-building-estate',  label: 'Projects' },
+      { to: '/sales',     icon: 'ti-file-dollar',       label: 'Sales' },
     ],
   },
   {
     section: 'People',
     items: [
-      { to: '/contacts', icon: 'ti-users', label: 'Contacts' },
-      { to: '/agencies', icon: 'ti-building', label: 'Agencies' },
+      { to: '/contacts',  icon: 'ti-users',             label: 'Contacts' },
+      { to: '/agencies',  icon: 'ti-building',          label: 'Agencies' },
     ],
   },
   {
-    section: 'Work',
+    section: 'Insights',
     items: [
-      { to: '/activities', icon: 'ti-checkbox', label: 'Activities' },
+      { to: '/reports',    icon: 'ti-chart-bar',        label: 'Reports' },
+      { to: '/activities', icon: 'ti-checkbox',         label: 'Activities' },
     ],
   },
 ]
 
 export default function Sidebar() {
-  const user = useAuthStore((s) => s.user)
+  const user      = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
 
   const initials = user
@@ -84,6 +91,7 @@ export default function Sidebar() {
               <NavLink
                 key={to}
                 to={to}
+                end={to === '/'}
                 style={({ isActive }) => ({
                   display: 'flex',
                   alignItems: 'center',

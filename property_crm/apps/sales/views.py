@@ -5,6 +5,8 @@ Workflow actions are dedicated POST endpoints — not PATCH on status.
 Each transition has side effects that must execute atomically via services.py.
 """
 
+from django.utils import timezone
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -51,6 +53,10 @@ class SaleViewSet(viewsets.ModelViewSet):
             qs = qs.filter(lot_id=params["lot"])
         if params.get("agent"):
             qs = qs.filter(agent_id=params["agent"])
+        if params.get("project"):
+            qs = qs.filter(lot__stage__project_id=params["project"])
+        if params.get("buyer"):
+            qs = qs.filter(primary_buyer_id=params["buyer"])
 
         return qs
 
@@ -105,6 +111,15 @@ class SaleViewSet(viewsets.ModelViewSet):
             organisation=org,
             **kwargs,
         )
+
+        # ── Auto-convert prospect to purchaser ──────────────────────────
+        # Set converted_at on the primary buyer the first time a sale is
+        # created for them. Subsequent sales do not overwrite the date.
+        if primary_buyer.converted_at is None:
+            primary_buyer.converted_at = timezone.now()
+            primary_buyer.save(update_fields=["converted_at"])
+        # ─────────────────────────────────────────────────────────────────
+
         return Response(SaleSerializer(sale, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
@@ -118,7 +133,6 @@ class SaleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Update id_verified on the sale if provided
         if request.data.get('id_verified') == 'true':
             sale.id_verified = True
             sale.save(update_fields=['id_verified'])
@@ -199,7 +213,7 @@ class SaleViewSet(viewsets.ModelViewSet):
 class CommissionViewSet(viewsets.ModelViewSet):
     serializer_class   = CommissionSerializer
     permission_classes = [IsAuthenticated, HasPermission("sale.approve")]
-    http_method_names  = ["get", "patch", "head", "options"]
+    http_method_names  = ["get", "patch", "post", "head", "options"]
 
     def get_queryset(self):
         return (
@@ -221,7 +235,6 @@ class CommissionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         """POST /commissions/{id}/approve/"""
-        from django.utils import timezone
         commission = self.get_object()
         if commission.status != Commission.CommissionStatus.PENDING:
             return Response(
@@ -237,7 +250,6 @@ class CommissionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def mark_paid(self, request, pk=None):
         """POST /commissions/{id}/mark_paid/"""
-        from django.utils import timezone
         commission = self.get_object()
         if commission.status != Commission.CommissionStatus.APPROVED:
             return Response(

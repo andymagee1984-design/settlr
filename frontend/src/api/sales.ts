@@ -1,3 +1,5 @@
+// src/api/sales.ts
+
 import client from './client'
 
 export interface Buyer {
@@ -19,10 +21,12 @@ export interface Sale {
   lot: string
   lot_number: string
   project_name: string
+  project_id: string
   primary_buyer: string
   primary_buyer_name: string
   secondary_buyer: string | null
   agent: string | null
+  agent_name: string | null
   status: string
   on_hold_expiry: string | null
   sale_price: number | null
@@ -67,8 +71,10 @@ export const submitSale = (id: string, data: FormData) =>
 
 export const progressSale = (id: string, data: FormData) =>
   client.post<Sale>(`/sales/${id}/progress/`, data).then((r) => r.data)
+
 export const getSale = (id: string) =>
   client.get<Sale>(`/sales/${id}/`).then((r) => r.data)
+
 export const getSalesByBuyer = (buyerId: string) =>
   client.get<any>('/sales/', { params: { buyer: buyerId } }).then((r) =>
     Array.isArray(r.data) ? r.data : (r.data.results ?? [])
