@@ -10,6 +10,8 @@ class ActivitySerializer(serializers.ModelSerializer):
     is_complete       = serializers.BooleanField(read_only=True)
     assigned_to_name  = serializers.CharField(source="assigned_to.get_full_name", read_only=True)
     created_by_name   = serializers.CharField(source="created_by.get_full_name", read_only=True)
+    contact_type      = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    contact_id        = serializers.UUIDField(required=False, allow_null=True)
 
     class Meta:
         model  = Activity
