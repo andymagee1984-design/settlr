@@ -78,7 +78,6 @@ function SaleCard({ sale, onAction }: { sale: Sale; onAction: (sale: Sale, actio
       padding: '16px 20px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Lot + project */}
         <div style={{ minWidth: 140 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
             Lot {sale.lot_number}
@@ -88,7 +87,6 @@ function SaleCard({ sale, onAction }: { sale: Sale; onAction: (sale: Sale, actio
           </div>
         </div>
 
-        {/* Buyer */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, color: '#111827', fontWeight: 500 }}>
             {sale.primary_buyer_name}
@@ -98,23 +96,25 @@ function SaleCard({ sale, onAction }: { sale: Sale; onAction: (sale: Sale, actio
           </div>
         </div>
 
-        {/* Timer */}
         <div style={{ minWidth: 120 }}>
           {sale.status === 'on_hold' && sale.on_hold_expiry && (
             <OnHoldTimer expiry={sale.on_hold_expiry} />
           )}
+          {sale.status === 'settled' && sale.settled_at && (
+            <span style={{ fontSize: 11, color: '#166534' }}>
+              <i className="ti ti-check" style={{ marginRight: 3 }} />
+              Settled {new Date(sale.settled_at).toLocaleDateString('en-AU')}
+            </span>
+          )}
         </div>
 
-        {/* Status */}
         <StatusBadge status={sale.status} />
 
-        {/* Date */}
         <div style={{ fontSize: 11, color: '#9ca3af', minWidth: 80, textAlign: 'right' }}>
           {new Date(sale.created_at).toLocaleDateString('en-AU')}
         </div>
       </div>
 
-      {/* Action buttons */}
       {actions.length > 0 && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
           {actions.map((action) => (
@@ -194,12 +194,23 @@ export default function SalesPage() {
           )
         })}
         <button
+          onClick={() => setStatusFilter(statusFilter === 'settled' ? '' : 'settled')}
+          style={{
+            padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+            background: '#f3f4f6', color: '#166534',
+            border: statusFilter === 'settled' ? '1px solid #166534' : '1px solid transparent',
+            fontWeight: 500, marginLeft: 'auto',
+          }}
+        >
+          Settled ({statusCounts['settled'] ?? 0})
+        </button>
+        <button
           onClick={() => setStatusFilter(statusFilter === 'fallen_over' ? '' : 'fallen_over')}
           style={{
             padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
             background: '#f3f4f6', color: '#6b7280',
             border: statusFilter === 'fallen_over' ? '1px solid #6b7280' : '1px solid transparent',
-            fontWeight: 500, marginLeft: 'auto',
+            fontWeight: 500,
           }}
         >
           Fallen Over ({statusCounts['fallen_over'] ?? 0})
