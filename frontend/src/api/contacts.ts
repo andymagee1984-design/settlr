@@ -83,3 +83,5 @@ export const getSolicitor = (id: string) =>
 
 export const getReferrer = (id: string) =>
   client.get<Referrer>(`/referrers/${id}/`).then((r) => r.data)
+export const createAgency = (data: Record<string, unknown>) =>
+  client.post<Agency>('/agencies/', data).then((r) => r.data)
