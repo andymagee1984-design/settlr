@@ -33,8 +33,8 @@ class Activity(OrgScopedModel):
     activity_date = models.DateTimeField()
 
     # Polymorphic contact link
-    contact_type  = models.CharField(max_length=20, choices=ContactType.choices)
-    contact_id    = models.UUIDField(help_text="ID of the related Buyer, Agent, Solicitor, or Referrer")
+    contact_type  = models.CharField(max_length=20, choices=ContactType.choices, null=True, blank=True)
+    contact_id    = models.UUIDField(null=True, blank=True, help_text="ID of the related Buyer, Agent, Solicitor, or Referrer")
 
     # Optional sale link
     sale          = models.ForeignKey(

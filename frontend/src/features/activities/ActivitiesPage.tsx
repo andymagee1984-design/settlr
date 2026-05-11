@@ -13,6 +13,7 @@ const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string }
 }
 
 function ActivityRow({ activity, onComplete }: { activity: Activity; onComplete: (id: string) => void }) {
+  const [expanded, setExpanded] = useState(false)
   const tc = TYPE_CONFIG[activity.activity_type] ?? { label: activity.activity_type, icon: 'ti-circle', color: '#6b7280' }
   const isTask = activity.activity_type === 'task'
   const isOverdue = isTask && !activity.is_complete && activity.due_date && new Date(activity.due_date) < new Date()
@@ -32,12 +33,18 @@ function ActivityRow({ activity, onComplete }: { activity: Activity; onComplete:
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <div style={{
-              fontSize: 13, fontWeight: 600, color: '#111827',
-              textDecoration: activity.is_complete ? 'line-through' : 'none',
-            }}>
+          <div style={{ flex: 1 }}>
+            <div
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                fontSize: 13, fontWeight: 600, color: '#111827',
+                textDecoration: activity.is_complete ? 'line-through' : 'none',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
               {activity.subject}
+              <i className={`ti ${expanded ? 'ti-chevron-up' : 'ti-chevron-down'}`}
+                style={{ fontSize: 10, color: '#9ca3af' }} />
             </div>
             <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
               <span style={{
@@ -61,9 +68,18 @@ function ActivityRow({ activity, onComplete }: { activity: Activity; onComplete:
           </div>
         </div>
 
-        {activity.description && (
-          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6, lineHeight: 1.5 }}>
-            {activity.description}
+        {expanded && (
+          <div style={{
+            marginTop: 10, padding: '10px 12px', background: '#f9fafb',
+            borderRadius: 6, border: '1px solid #f3f4f6',
+          }}>
+            {activity.description ? (
+              <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.6 }}>
+                {activity.description}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>No notes.</div>
+            )}
           </div>
         )}
 

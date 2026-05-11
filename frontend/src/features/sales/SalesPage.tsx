@@ -4,6 +4,7 @@ import { getSales } from '../../api/sales'
 import type { Sale } from '../../api/sales'
 import SaleActionModal from './SaleActionModal'
 import type { ActionType } from './SaleActionModal'
+import SaleDetailPanel from './SaleDetailPanel'
 
 const STATUS_COLOURS: Record<string, { bg: string; color: string; label: string }> = {
   on_hold:         { bg: '#fef9c3', color: '#854d0e', label: 'On Hold' },
@@ -69,14 +70,21 @@ function OnHoldTimer({ expiry }: { expiry: string }) {
   )
 }
 
-function SaleCard({ sale, onAction }: { sale: Sale; onAction: (sale: Sale, action: ActionType) => void }) {
+function SaleCard({ sale, onAction, onSelect }: {
+  sale: Sale
+  onAction: (sale: Sale, action: ActionType) => void
+  onSelect: (id: string) => void
+}) {
   const actions = ACTIONS_BY_STATUS[sale.status] ?? []
 
   return (
-    <div style={{
-      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-      padding: '16px 20px',
-    }}>
+    <div
+      onClick={() => onSelect(sale.id)}
+      style={{
+        background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+        padding: '16px 20px', cursor: 'pointer',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ minWidth: 140 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
@@ -116,7 +124,10 @@ function SaleCard({ sale, onAction }: { sale: Sale; onAction: (sale: Sale, actio
       </div>
 
       {actions.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}
+        >
           {actions.map((action) => (
             <button
               key={action}
@@ -140,6 +151,7 @@ function SaleCard({ sale, onAction }: { sale: Sale; onAction: (sale: Sale, actio
 export default function SalesPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [activeModal, setActiveModal] = useState<{ sale: Sale; action: ActionType } | null>(null)
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
 
   const { data: sales = [], isLoading } = useQuery<Sale[]>({
     queryKey: ['sales'],
@@ -225,7 +237,12 @@ export default function SalesPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map((sale) => (
-            <SaleCard key={sale.id} sale={sale} onAction={(s, a) => setActiveModal({ sale: s, action: a })} />
+            <SaleCard
+              key={sale.id}
+              sale={sale}
+              onAction={(s, a) => setActiveModal({ sale: s, action: a })}
+              onSelect={(id) => setSelectedSaleId(id)}
+            />
           ))}
         </div>
       )}
@@ -235,6 +252,13 @@ export default function SalesPage() {
           sale={activeModal.sale}
           action={activeModal.action}
           onClose={() => setActiveModal(null)}
+        />
+      )}
+
+      {selectedSaleId && (
+        <SaleDetailPanel
+          saleId={selectedSaleId}
+          onClose={() => setSelectedSaleId(null)}
         />
       )}
     </div>

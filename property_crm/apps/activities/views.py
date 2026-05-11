@@ -3,6 +3,7 @@ apps/activities/views.py
 """
 
 from django.utils import timezone
+from django.db.models import Q
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -26,8 +27,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
         params = self.request.query_params
         if params.get("contact_type") and params.get("contact_id"):
             qs = qs.filter(
-                contact_type=params["contact_type"],
-                contact_id=params["contact_id"],
+                Q(contact_type=params["contact_type"], contact_id=params["contact_id"]) |
+                Q(sale__primary_buyer_id=params["contact_id"])
             )
         if params.get("sale"):
             qs = qs.filter(sale_id=params["sale"])

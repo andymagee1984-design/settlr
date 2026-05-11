@@ -72,3 +72,14 @@ export const getReferrers = () =>
   client.get<any>('/referrers/').then((r) =>
     Array.isArray(r.data) ? r.data : (r.data.results ?? [])
   )
+  export const getBuyer = (id: string) =>
+  client.get<Buyer>(`/buyers/${id}/`).then((r) => r.data)
+
+export const getAgent = (id: string) =>
+  client.get<Agent>(`/agents/${id}/`).then((r) => r.data)
+
+export const getSolicitor = (id: string) =>
+  client.get<Solicitor>(`/solicitors/${id}/`).then((r) => r.data)
+
+export const getReferrer = (id: string) =>
+  client.get<Referrer>(`/referrers/${id}/`).then((r) => r.data)

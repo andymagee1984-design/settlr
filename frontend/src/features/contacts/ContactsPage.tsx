@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getBuyers, getAgents, getSolicitors, getReferrers } from '../../api/contacts'
 import type { Buyer, Agent, Solicitor, Referrer } from '../../api/contacts'
+import ContactDetailPanel from './ContactDetailPanel'
 
 type Tab = 'buyers' | 'agents' | 'solicitors' | 'referrers'
 
@@ -20,7 +21,11 @@ const headStyle = {
   background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
 }
 
-function Table({ headers, rows }: { headers: string[]; rows: (string | React.ReactElement)[][] }) {
+function Table({ headers, rows, onRowClick }: {
+  headers: string[]
+  rows: (string | React.ReactElement)[][]
+  onRowClick?: (index: number) => void
+}) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -37,7 +42,11 @@ function Table({ headers, rows }: { headers: string[]; rows: (string | React.Rea
               </td>
             </tr>
           ) : rows.map((row, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+            <tr
+              key={i}
+              onClick={() => onRowClick?.(i)}
+              style={{ borderBottom: '1px solid #f3f4f6', cursor: onRowClick ? 'pointer' : 'default' }}
+            >
               {row.map((cell, j) => <td key={j} style={cellStyle}>{cell}</td>)}
             </tr>
           ))}
@@ -61,6 +70,10 @@ function Badge({ label, color }: { label: string; color: string }) {
 export default function ContactsPage() {
   const [tab, setTab] = useState<Tab>('buyers')
   const [search, setSearch] = useState('')
+  const [selectedContact, setSelectedContact] = useState<{
+    id: string
+    type: 'Buyer' | 'Agent' | 'Solicitor' | 'Referrer'
+  } | null>(null)
 
   const { data: buyers = [], isLoading: loadingBuyers } = useQuery<Buyer[]>({
     queryKey: ['buyers'],
@@ -90,49 +103,42 @@ export default function ContactsPage() {
 
   const q = search.toLowerCase()
 
-  const buyerRows = buyers
-    .filter(b => !q || b.display_name?.toLowerCase().includes(q) || b.email?.toLowerCase().includes(q))
-    .map(b => [
-      <span style={{ fontWeight: 500, color: '#111827' }}>{b.display_name}</span>,
-      <Badge label={b.buyer_type} color={b.buyer_type === 'individual' ? '#3b82f6' : b.buyer_type === 'company' ? '#8b5cf6' : '#f59e0b'} />,
-      b.email || '—',
-      b.phone || '—',
-      b.address || '—',
-      b.id_verified
-        ? <Badge label="Verified" color="#16a34a" />
-        : <Badge label="Unverified" color="#6b7280" />,
-    ])
+  const filteredBuyers = buyers.filter(b => !q || b.display_name?.toLowerCase().includes(q) || b.email?.toLowerCase().includes(q))
+  const filteredAgents = agents.filter(a => !q || `${a.first_name} ${a.last_name}`.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q))
+  const filteredSolicitors = solicitors.filter(s => !q || `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) || s.firm_name?.toLowerCase().includes(q))
+  const filteredReferrers = referrers.filter(r => !q || `${r.first_name} ${r.last_name}`.toLowerCase().includes(q) || r.company_name?.toLowerCase().includes(q))
 
-  const agentRows = agents
-    .filter(a => !q || `${a.first_name} ${a.last_name}`.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q))
-    .map(a => [
-      <span style={{ fontWeight: 500, color: '#111827' }}>{a.first_name} {a.last_name}</span>,
-      a.agency_name || '—',
-      a.email || '—',
-      a.phone || '—',
-      a.is_active
-        ? <Badge label="Active" color="#16a34a" />
-        : <Badge label="Inactive" color="#6b7280" />,
-    ])
+  const buyerRows = filteredBuyers.map(b => [
+    <span style={{ fontWeight: 500, color: '#111827' }}>{b.display_name}</span>,
+    <Badge label={b.buyer_type} color={b.buyer_type === 'individual' ? '#3b82f6' : b.buyer_type === 'company' ? '#8b5cf6' : '#f59e0b'} />,
+    b.email || '—',
+    b.phone || '—',
+    b.address || '—',
+    b.id_verified ? <Badge label="Verified" color="#16a34a" /> : <Badge label="Unverified" color="#6b7280" />,
+  ])
 
-  const solicitorRows = solicitors
-    .filter(s => !q || `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) || s.firm_name?.toLowerCase().includes(q))
-    .map(s => [
-      <span style={{ fontWeight: 500, color: '#111827' }}>{s.first_name} {s.last_name}</span>,
-      s.firm_name || '—',
-      s.email || '—',
-      s.phone || '—',
-      s.address || '—',
-    ])
+  const agentRows = filteredAgents.map(a => [
+    <span style={{ fontWeight: 500, color: '#111827' }}>{a.first_name} {a.last_name}</span>,
+    a.agency_name || '—',
+    a.email || '—',
+    a.phone || '—',
+    a.is_active ? <Badge label="Active" color="#16a34a" /> : <Badge label="Inactive" color="#6b7280" />,
+  ])
 
-  const referrerRows = referrers
-    .filter(r => !q || `${r.first_name} ${r.last_name}`.toLowerCase().includes(q) || r.company_name?.toLowerCase().includes(q))
-    .map(r => [
-      <span style={{ fontWeight: 500, color: '#111827' }}>{r.first_name} {r.last_name}</span>,
-      r.company_name || '—',
-      r.email || '—',
-      r.phone || '—',
-    ])
+  const solicitorRows = filteredSolicitors.map(s => [
+    <span style={{ fontWeight: 500, color: '#111827' }}>{s.first_name} {s.last_name}</span>,
+    s.firm_name || '—',
+    s.email || '—',
+    s.phone || '—',
+    s.address || '—',
+  ])
+
+  const referrerRows = filteredReferrers.map(r => [
+    <span style={{ fontWeight: 500, color: '#111827' }}>{r.first_name} {r.last_name}</span>,
+    r.company_name || '—',
+    r.email || '—',
+    r.phone || '—',
+  ])
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1200 }}>
@@ -184,21 +190,33 @@ export default function ContactsPage() {
         <Table
           headers={['Name', 'Type', 'Email', 'Phone', 'Address', 'ID']}
           rows={buyerRows}
+          onRowClick={(i) => setSelectedContact({ id: filteredBuyers[i].id, type: 'Buyer' })}
         />
       ) : tab === 'agents' ? (
         <Table
           headers={['Name', 'Agency', 'Email', 'Phone', 'Status']}
           rows={agentRows}
+          onRowClick={(i) => setSelectedContact({ id: filteredAgents[i].id, type: 'Agent' })}
         />
       ) : tab === 'solicitors' ? (
         <Table
           headers={['Name', 'Firm', 'Email', 'Phone', 'Address']}
           rows={solicitorRows}
+          onRowClick={(i) => setSelectedContact({ id: filteredSolicitors[i].id, type: 'Solicitor' })}
         />
       ) : (
         <Table
           headers={['Name', 'Company', 'Email', 'Phone']}
           rows={referrerRows}
+          onRowClick={(i) => setSelectedContact({ id: filteredReferrers[i].id, type: 'Referrer' })}
+        />
+      )}
+
+      {selectedContact && (
+        <ContactDetailPanel
+          contactId={selectedContact.id}
+          contactType={selectedContact.type}
+          onClose={() => setSelectedContact(null)}
         />
       )}
     </div>

@@ -67,3 +67,9 @@ export const submitSale = (id: string, data: FormData) =>
 
 export const progressSale = (id: string, data: FormData) =>
   client.post<Sale>(`/sales/${id}/progress/`, data).then((r) => r.data)
+export const getSale = (id: string) =>
+  client.get<Sale>(`/sales/${id}/`).then((r) => r.data)
+export const getSalesByBuyer = (buyerId: string) =>
+  client.get<any>('/sales/', { params: { buyer: buyerId } }).then((r) =>
+    Array.isArray(r.data) ? r.data : (r.data.results ?? [])
+  )
