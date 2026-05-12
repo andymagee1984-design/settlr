@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { DollarSign, TrendingUp, Home, AlertTriangle } from 'lucide-react'
+import { DollarSign, TrendingUp, Home, AlertTriangle, BarChart2 } from 'lucide-react'
 import client from '../../api/client'
 import type { Sale } from '../../api/sales'
 import type { ProjectDetail } from './types'
@@ -232,27 +232,23 @@ export default function ProjectReportsTab({ project }: { project: ProjectDetail 
       ['on_hold', 'pending', 'declined', 'reserved', 'contract_issued', 'exchanged'].includes(s.status)
     )
 
-    const contractedGR = contractedSales.reduce((s, x) => s + (Number(x.sale_price) || 0), 0)
-    const settledGR    = settledSales.reduce((s, x) => s + (Number(x.sale_price) || 0), 0)
-    const totalKnownGR = contractedGR + settledGR
+    const contractedGR   = contractedSales.reduce((s, x) => s + (Number(x.sale_price) || 0), 0)
+    const settledGR      = settledSales.reduce((s, x) => s + (Number(x.sale_price) || 0), 0)
+    // Project GR = sum of all lot prices (unsettled at current price + settled at sale price)
+    // Comes from the backend via lot_counts.total_gr
     const totalProjectGR = project.lot_counts.total_gr ? parseFloat(project.lot_counts.total_gr) : 0
 
     const completed    = settledSales.length + fallenSales.length
     const fallOverRate = completed > 0 ? Math.round((fallenSales.length / completed) * 100) : 0
 
-    const priced       = settledSales.filter(s => s.sale_price)
-    const avgPrice     = priced.length > 0
-      ? priced.reduce((s, x) => s + Number(x.sale_price), 0) / priced.length
-      : 0
-
     return {
-      contractedGR, settledGR, totalKnownGR,
+      contractedGR, settledGR, totalProjectGR,
       activeSales: activeSales.length,
       settledCount: settledSales.length,
       fallenOverCount: fallenSales.length,
-      fallOverRate, avgPrice,
+      fallOverRate,
     }
-  }, [sales])
+  }, [sales, project.lot_counts.total_gr])
 
   if (isLoading) {
     return <div style={{ color: '#9ca3af', fontSize: 13 }}>Loading…</div>
@@ -261,8 +257,15 @@ export default function ProjectReportsTab({ project }: { project: ProjectDetail 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-      {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      {/* KPI cards — 5 across */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+        <KpiCard
+          label="Project GR"
+          value={metrics.totalProjectGR > 0 ? fmt(metrics.totalProjectGR) : '—'}
+          sub="all lots at current prices"
+          icon={BarChart2}
+          colour="#8b5cf6"
+        />
         <KpiCard
           label="Contracted GR"
           value={fmt(metrics.contractedGR)}

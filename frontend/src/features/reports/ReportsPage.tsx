@@ -1,7 +1,6 @@
 // src/features/reports/ReportsPage.tsx
 // Route: /reports
 // Org-level reporting dashboard — all projects rollup + per-project breakdown.
-// All data pulled from existing /projects/ and /sales/ endpoints — no new backend needed.
 
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -35,7 +34,7 @@ function fmt(n: number): string {
   return `$${n}`
 }
 
-const ACTIVE_STATUSES  = ['on_hold', 'pending', 'declined', 'reserved', 'contract_issued', 'exchanged']
+const ACTIVE_STATUSES     = ['on_hold', 'pending', 'declined', 'reserved', 'contract_issued', 'exchanged']
 const CONTRACTED_STATUSES = ['reserved', 'contract_issued', 'exchanged']
 
 interface ProjectMetrics {
@@ -54,11 +53,11 @@ interface ProjectMetrics {
 function computeProjectMetrics(project: ProjectListItem, allSales: Sale[]): ProjectMetrics {
   const sales = allSales.filter(s => s.project_name === project.name)
 
-  const activeSales    = sales.filter(s => ACTIVE_STATUSES.includes(s.status))
+  const activeSales     = sales.filter(s => ACTIVE_STATUSES.includes(s.status))
   const contractedSales = sales.filter(s => CONTRACTED_STATUSES.includes(s.status))
-  const settledSales   = sales.filter(s => s.status === 'settled')
-  const fallenSales    = sales.filter(s => s.status === 'fallen_over')
-  const completedSales = [...settledSales, ...fallenSales]
+  const settledSales    = sales.filter(s => s.status === 'settled')
+  const fallenSales     = sales.filter(s => s.status === 'fallen_over')
+  const completedSales  = [...settledSales, ...fallenSales]
 
   const contractedGR = contractedSales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
   const settledGR    = settledSales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
@@ -71,23 +70,23 @@ function computeProjectMetrics(project: ProjectListItem, allSales: Sale[]): Proj
     ? priced.reduce((sum, s) => sum + Number(s.sale_price), 0) / priced.length
     : 0
 
-  // Total GR = sum of current lot prices (available from lot_counts × avg — approximated)
-  // Better: use contracted + settled + (available lots × 0 since no price in list)
-  // We use contracted + settled as "known GR" for now
   const totalGR = contractedGR + settledGR
 
   return {
-    project,
-    totalGR,
-    contractedGR,
-    settledGR,
+    project, totalGR, contractedGR, settledGR,
     activeSales: activeSales.length,
     settledCount: settledSales.length,
     fallenOverCount: fallenSales.length,
-    fallOverRate,
-    avgSalePrice,
-    sales,
+    fallOverRate, avgSalePrice, sales,
   }
+}
+
+// Shared card shadow
+const CARD_STYLE: React.CSSProperties = {
+  background: '#ffffff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 12,
+  boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.06)',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,8 +102,9 @@ function KpiCard({ label, value, sub, icon: Icon, colour }: {
 }) {
   return (
     <div style={{
-      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
-      padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12,
+      ...CARD_STYLE,
+      padding: '20px 24px',
+      display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ fontSize: 12, fontWeight: 500, color: '#6b7280' }}>{label}</div>
@@ -152,7 +152,7 @@ function PipelineFunnel({ sales }: { sales: Sale[] }) {
           <div style={{ width: 100, fontSize: 12, color: '#6b7280', textAlign: 'right' as const, flexShrink: 0 }}>
             {label}
           </div>
-          <div style={{ flex: 1, height: 28, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+          <div style={{ flex: 1, height: 28, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
             <div style={{
               height: '100%', width: `${(count / max) * 100}%`,
               background: colour, borderRadius: 6, minWidth: count > 0 ? 28 : 0,
@@ -174,7 +174,7 @@ function PipelineFunnel({ sales }: { sales: Sale[] }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lot availability bar (reuses lot_counts from project list)
+// Lot availability bar
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AvailabilityBar({ counts }: { counts: ProjectListItem['lot_counts'] }) {
@@ -201,7 +201,7 @@ function AvailabilityBar({ counts }: { counts: ProjectListItem['lot_counts'] }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-project row in the summary table
+// Per-project row
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ProjectRow({ metrics, onClick }: { metrics: ProjectMetrics; onClick: () => void }) {
@@ -212,8 +212,8 @@ function ProjectRow({ metrics, onClick }: { metrics: ProjectMetrics; onClick: ()
   return (
     <tr
       onClick={onClick}
-      style={{ borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}
-      onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+      style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
       onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
     >
       <td style={{ padding: '14px 16px' }}>
@@ -304,19 +304,18 @@ export default function ReportsPage() {
     [filteredProjects, sales]
   )
 
-  // Org-level rollup
   const orgMetrics = useMemo(() => {
-    const totalLots       = allMetrics.reduce((s, m) => s + m.project.lot_counts.total, 0)
-    const totalAvailable  = allMetrics.reduce((s, m) => s + m.project.lot_counts.available, 0)
-    const totalActiveSales = allMetrics.reduce((s, m) => s + m.activeSales, 0)
-    const totalSettledGR  = allMetrics.reduce((s, m) => s + m.settledGR, 0)
+    const totalLots         = allMetrics.reduce((s, m) => s + m.project.lot_counts.total, 0)
+    const totalAvailable    = allMetrics.reduce((s, m) => s + m.project.lot_counts.available, 0)
+    const totalActiveSales  = allMetrics.reduce((s, m) => s + m.activeSales, 0)
+    const totalSettledGR    = allMetrics.reduce((s, m) => s + m.settledGR, 0)
     const totalContractedGR = allMetrics.reduce((s, m) => s + m.contractedGR, 0)
-    const totalFallenOver = allMetrics.reduce((s, m) => s + m.fallenOverCount, 0)
-    const totalSettled    = allMetrics.reduce((s, m) => s + m.settledCount, 0)
-    const fallOverRate    = (totalFallenOver + totalSettled) > 0
+    const totalFallenOver   = allMetrics.reduce((s, m) => s + m.fallenOverCount, 0)
+    const totalSettled      = allMetrics.reduce((s, m) => s + m.settledCount, 0)
+    const fallOverRate      = (totalFallenOver + totalSettled) > 0
       ? Math.round((totalFallenOver / (totalFallenOver + totalSettled)) * 100)
       : 0
-    const totalProjectGR  = allMetrics.reduce((s, m) => {
+    const totalProjectGR    = allMetrics.reduce((s, m) => {
       const gr = m.project.lot_counts.total_gr
       return s + (gr ? parseFloat(gr) : 0)
     }, 0)
@@ -324,7 +323,7 @@ export default function ReportsPage() {
   }, [allMetrics])
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
+    <div style={{ padding: '24px 28px', maxWidth: 1400, background: '#f1f5f9', minHeight: '100vh' }}>
 
       {/* Header */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -339,7 +338,7 @@ export default function ReportsPage() {
             <button key={f} onClick={() => setStatusFilter(f)} style={{
               padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
               cursor: 'pointer', border: 'none',
-              background: statusFilter === f ? '#111827' : '#f3f4f6',
+              background: statusFilter === f ? '#111827' : '#e2e8f0',
               color: statusFilter === f ? '#fff' : '#374151',
             }}>
               {f === 'active' ? 'Active projects' : 'All projects'}
@@ -353,7 +352,7 @@ export default function ReportsPage() {
       ) : (
         <>
           {/* Org KPI cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
             <KpiCard
               label="Total lots"
               value={String(orgMetrics.totalLots)}
@@ -391,11 +390,8 @@ export default function ReportsPage() {
             />
           </div>
 
-          {/* Pipeline funnel — all active sales */}
-          <div style={{
-            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
-            padding: '20px 24px', marginBottom: 24,
-          }}>
+          {/* Pipeline funnel */}
+          <div style={{ ...CARD_STYLE, padding: '20px 24px', marginBottom: 20 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 16 }}>
               Sales pipeline — all projects
             </div>
@@ -403,11 +399,8 @@ export default function ReportsPage() {
           </div>
 
           {/* Per-project table */}
-          <div style={{
-            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
-            overflow: 'hidden',
-          }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ ...CARD_STYLE, overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
                 Project breakdown
               </div>
@@ -419,7 +412,7 @@ export default function ReportsPage() {
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                     {['Project', 'Lots', 'Sales', 'Project GR', 'Contracted GR', 'Settled GR', 'Fall-over', ''].map(h => (
                       <th key={h} style={{
                         padding: '10px 16px', fontSize: 11, fontWeight: 600,
@@ -440,9 +433,8 @@ export default function ReportsPage() {
                     />
                   ))}
                 </tbody>
-                {/* Totals row */}
                 <tfoot>
-                  <tr style={{ background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
+                  <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
                     <td style={{ padding: '12px 16px', fontSize: 12, fontWeight: 700, color: '#374151' }}>
                       Total ({filteredProjects.length} projects)
                     </td>
