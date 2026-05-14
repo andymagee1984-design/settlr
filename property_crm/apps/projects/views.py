@@ -17,6 +17,7 @@ This gives you:
     POST /api/v1/projects/{id}/agencies/                → assign an agency to project
     DELETE /api/v1/projects/{id}/agencies/{agency_id}/  → remove agency from project
     GET  /api/v1/lots/{id}/                             → lot detail (agency-scoped)
+    GET  /api/v1/lots/{id}/assign-agency/               → get current exclusive assignment for a lot
     POST /api/v1/lots/{id}/assign-agency/               → exclusively assign lot to agency
     DELETE /api/v1/lots/{id}/assign-agency/             → remove exclusive lot assignment
 """
@@ -407,6 +408,7 @@ class LotViewSet(
 ):
     """
     GET    /api/v1/lots/{id}/               → lot detail (agency-scoped)
+    GET    /api/v1/lots/{id}/assign-agency/ → get current exclusive assignment for a lot
     POST   /api/v1/lots/{id}/assign-agency/ → exclusively assign lot to an agency
     DELETE /api/v1/lots/{id}/assign-agency/ → remove exclusive lot assignment
     """
@@ -422,11 +424,15 @@ class LotViewSet(
 
     @action(
         detail=True,
-        methods=["post", "delete"],
+        methods=["get", "post", "delete"],
         url_path="assign-agency",
     )
     def assign_agency(self, request, pk=None):
         """
+        GET /api/v1/lots/{id}/assign-agency/
+            Returns the current exclusive agency assignment for this lot,
+            or null if no exclusive assignment exists.
+
         POST /api/v1/lots/{id}/assign-agency/
             Exclusively assign this lot to an agency.
             Body: { "agency_id": "<uuid>" }
@@ -434,17 +440,27 @@ class LotViewSet(
         DELETE /api/v1/lots/{id}/assign-agency/
             Remove the exclusive assignment from this lot.
 
-        Internal users only. Blocked if the lot has an active sale
-        by a different agency.
+        POST and DELETE: internal users only.
+        Blocked if the lot has an active sale by a different agency.
         """
+        lot = self.get_object()
+
+        # ── GET — return current exclusive assignment ──
+        if request.method == "GET":
+            try:
+                la = LotAgency.objects.select_related("agency", "assigned_by").get(lot=lot)
+                return Response(LotAgencySerializer(la).data)
+            except LotAgency.DoesNotExist:
+                return Response(None)
+
+        # ── Mutation guard — agency users cannot manage assignments ──
         if AgencyScope.is_agency_user(request.user):
             return Response(
                 {"error": "permission_denied", "detail": "Agency users cannot manage lot assignments."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        lot = self.get_object()
-
+        # ── DELETE — remove exclusive assignment ──
         if request.method == "DELETE":
             try:
                 la = LotAgency.objects.get(lot=lot)
@@ -456,7 +472,7 @@ class LotViewSet(
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-        # POST — assign exclusively
+        # ── POST — assign exclusively ──
         agency_id = request.data.get("agency_id")
         if not agency_id:
             return Response(
