@@ -1,0 +1,109 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Import lots — {{ project.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:projects_project_changelist' %}">Projects</a>
+  &rsaquo; <a href="{% url 'admin:projects_project_change' project.pk %}">{{ project.name }}</a>
+  &rsaquo; <a href="{{ back_url }}">Lots</a>
+  &rsaquo; Import CSV
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Import lots — {{ project.name }}</h1>
+
+{% if not preview %}
+<form method="post" enctype="multipart/form-data" style="max-width:500px;margin-top:16px;">
+  {% csrf_token %}
+
+  {% if form.errors %}
+  <div class="errornote">{{ form.errors }}</div>
+  {% endif %}
+
+  <fieldset class="module aligned">
+    <div class="form-row">
+      {{ form.stage.label_tag }}{{ form.stage }}
+      <p class="help">Select the stage these lots will be imported into.</p>
+    </div>
+    <div class="form-row">
+      {{ form.csv_file.label_tag }}{{ form.csv_file }}
+      <p class="help">
+        CSV with columns: {{ form.csv_file.help_text }}
+        <a href="{{ template_url }}">Download template</a>
+      </p>
+    </div>
+  </fieldset>
+
+  <div class="submit-row">
+    <input type="submit" value="Preview import" class="default">
+    <a href="{{ back_url }}" style="margin-left:12px;">Cancel</a>
+  </div>
+</form>
+
+{% else %}
+{# Preview step #}
+<p style="margin:12px 0;font-size:13px;">
+  Previewing <strong>{{ validated|length }}</strong> rows —
+  <span style="color:green;">{{ valid_count }} valid</span>,
+  <span style="color:red;">{{ invalid_count }} with errors</span>.
+  Stage: <strong>{{ stage.name }}</strong>
+</p>
+
+{% if invalid_count > 0 %}
+<div class="errornote">
+  {{ invalid_count }} row(s) have errors and will be skipped on import.
+</div>
+{% endif %}
+
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+  <thead>
+    <tr style="background:#f8f9fa;">
+      <th style="padding:8px;border:1px solid #ddd;">Row</th>
+      <th style="padding:8px;border:1px solid #ddd;">Lot #</th>
+      <th style="padding:8px;border:1px solid #ddd;">Type</th>
+      <th style="padding:8px;border:1px solid #ddd;">Bed/Bath/Car</th>
+      <th style="padding:8px;border:1px solid #ddd;">Price</th>
+      <th style="padding:8px;border:1px solid #ddd;">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in validated %}
+    <tr style="{% if not v.ok %}background:#fff5f5;{% endif %}">
+      <td style="padding:6px 8px;border:1px solid #eee;">{{ v.row }}</td>
+      <td style="padding:6px 8px;border:1px solid #eee;">{{ v.raw.lot_number|default:"—" }}</td>
+      <td style="padding:6px 8px;border:1px solid #eee;">{{ v.raw.lot_type|default:"—" }}</td>
+      <td style="padding:6px 8px;border:1px solid #eee;">
+        {{ v.raw.bedrooms|default:"—" }}/{{ v.raw.bathrooms|default:"—" }}/{{ v.raw.car_spaces|default:"—" }}
+      </td>
+      <td style="padding:6px 8px;border:1px solid #eee;">{{ v.raw.initial_price|default:"—" }}</td>
+      <td style="padding:6px 8px;border:1px solid #eee;">
+        {% if v.ok %}
+          <span style="color:green;font-weight:600;">✓ Valid</span>
+        {% else %}
+          <span style="color:red;">✗ {% for e in v.errors %}{{ e }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if valid_count > 0 %}
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="hidden" name="confirm_import" value="1">
+  <div class="submit-row">
+    <input type="submit" value="Confirm — import {{ valid_count }} lot(s)" class="default">
+    <a href="{{ back_url }}" style="margin-left:12px;">Cancel</a>
+  </div>
+</form>
+{% else %}
+<p style="color:red;">No valid rows to import. <a href="{{ back_url }}">Go back</a>.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

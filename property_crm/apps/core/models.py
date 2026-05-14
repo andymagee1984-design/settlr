@@ -89,6 +89,16 @@ class Organisation(TimeStampedModel):
     holding_deposit_default = models.DecimalField(max_digits=10, decimal_places=2, default=1000)
     billing_status          = models.CharField(max_length=20, choices=BillingStatus.choices, default=BillingStatus.ACTIVE)
 
+    # Sales advice notifications — comma-separated list of email addresses
+    # that receive a copy of every sales advice generated for this organisation.
+    # e.g. "developer@example.com,accounts@example.com"
+    # Leave blank if no additional recipients beyond solicitors.
+    notification_emails     = models.TextField(
+        blank=True,
+        default="",
+        help_text="Comma-separated email addresses to CC on all sales advice emails (e.g. developer mailbox).",
+    )
+
     class Meta:
         ordering = ["name"]
         verbose_name = "Organisation"
@@ -96,3 +106,9 @@ class Organisation(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    def get_notification_email_list(self) -> list[str]:
+        """Returns notification_emails as a clean list, ignoring blanks."""
+        if not self.notification_emails:
+            return []
+        return [e.strip() for e in self.notification_emails.split(",") if e.strip()]

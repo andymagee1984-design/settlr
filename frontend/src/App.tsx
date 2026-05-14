@@ -11,6 +11,7 @@ import ContactsPage from './features/contacts/ContactsPage'
 import AgenciesPage from './features/contacts/AgenciesPage'
 import ActivitiesPage from './features/activities/ActivitiesPage'
 import ReportsPage from './features/reports/ReportsPage'
+import NotificationsPage from './features/notifications/Notificationspage'
 
 const queryClient = new QueryClient()
 
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/agencies" element={<AgenciesPage />} />
             <Route path="/activities" element={<ActivitiesPage />} />
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

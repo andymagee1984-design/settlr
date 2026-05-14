@@ -14,4 +14,5 @@ router.register("permissions", views.CRMPermissionViewSet, basename="permission"
 urlpatterns = [
     path("", include(router.urls)),
     path("auth/me/", views.MeView.as_view(), name="auth-me"),
+    path("org-users/", views.UsersListView.as_view(), name="users-list"),
 ]

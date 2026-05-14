@@ -29,4 +29,6 @@ class ActivitySerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data["organisation"] = self.context["request"].user.organisation
         validated_data["created_by"]   = self.context["request"].user
+        if not validated_data.get("assigned_to"):
+            validated_data["assigned_to"] = self.context["request"].user
         return super().create(validated_data)

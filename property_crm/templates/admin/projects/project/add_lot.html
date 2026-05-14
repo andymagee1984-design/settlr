@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Add lot — {{ project.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:projects_project_changelist' %}">Projects</a>
+  &rsaquo; <a href="{% url 'admin:projects_project_change' project.pk %}">{{ project.name }}</a>
+  &rsaquo; <a href="{{ back_url }}">Lots</a>
+  &rsaquo; Add lot
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Add lot — {{ project.name }}</h1>
+
+<form method="post" style="max-width:700px;margin-top:16px;">
+  {% csrf_token %}
+
+  {% if form.errors %}
+  <div class="errornote">
+    Please correct the errors below.
+    {{ form.errors }}
+  </div>
+  {% endif %}
+
+  <fieldset class="module aligned">
+    <h2>Lot details</h2>
+    <div class="form-row">{{ form.stage.label_tag }}{{ form.stage }}</div>
+    <div class="form-row">{{ form.lot_number.label_tag }}{{ form.lot_number }}</div>
+    <div class="form-row">{{ form.lot_type.label_tag }}{{ form.lot_type }}</div>
+  </fieldset>
+
+  <fieldset class="module aligned">
+    <h2>Specifications</h2>
+    <div class="form-row">{{ form.bedrooms.label_tag }}{{ form.bedrooms }}</div>
+    <div class="form-row">{{ form.bathrooms.label_tag }}{{ form.bathrooms }}</div>
+    <div class="form-row">{{ form.car_spaces.label_tag }}{{ form.car_spaces }}</div>
+    <div class="form-row">{{ form.land_area.label_tag }}{{ form.land_area }}</div>
+    <div class="form-row">{{ form.floor_area.label_tag }}{{ form.floor_area }}</div>
+    <div class="form-row">{{ form.aspect.label_tag }}{{ form.aspect }}</div>
+    <div class="form-row">{{ form.level.label_tag }}{{ form.level }}</div>
+    <div class="form-row">{{ form.building.label_tag }}{{ form.building }}</div>
+  </fieldset>
+
+  <fieldset class="module aligned">
+    <h2>Initial price (optional)</h2>
+    <div class="form-row">{{ form.initial_price.label_tag }}{{ form.initial_price }}</div>
+    <div class="form-row">{{ form.price_effective_date.label_tag }}{{ form.price_effective_date }}</div>
+  </fieldset>
+
+  <div class="submit-row">
+    <input type="submit" value="Save and continue adding" name="save_and_add" class="default">
+    <input type="submit" value="Save lot" class="default">
+    <a href="{{ back_url }}" style="margin-left:12px;">Cancel</a>
+  </div>
+</form>
+{% endblock %}

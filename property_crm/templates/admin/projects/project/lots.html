@@ -1,0 +1,209 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Lots — {{ project.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:projects_project_changelist' %}">Projects</a>
+  &rsaquo; <a href="{{ back_url }}">{{ project.name }}</a>
+  &rsaquo; Lots
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .lots-header      { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .lots-actions     { display:flex; gap:8px; flex-wrap:wrap; }
+  .btn              { padding:8px 14px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; text-decoration:none; border:none; display:inline-flex; align-items:center; gap:5px; }
+  .btn-primary      { background:#417690; color:#fff; }
+  .btn-secondary    { background:#f0f0f0; color:#333; border:1px solid #ccc; }
+  .btn-success      { background:#28a745; color:#fff; }
+  .btn-warning      { background:#ffc107; color:#333; }
+  .btn-sm           { padding:4px 10px; font-size:12px; }
+  .stage-section    { margin-bottom:28px; border:1px solid #e0e0e0; border-radius:8px; overflow:hidden; }
+  .stage-header     { background:#f8f9fa; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e0e0e0; }
+  .stage-title      { font-size:14px; font-weight:600; color:#333; margin:0; }
+  .stage-meta       { font-size:12px; color:#888; margin-top:2px; }
+  .lot-table        { width:100%; border-collapse:collapse; font-size:13px; }
+  .lot-table th     { background:#fafafa; padding:8px 12px; text-align:left; font-size:11px; font-weight:600; color:#666; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #eee; }
+  .lot-table td     { padding:8px 12px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+  .lot-table tr:last-child td { border-bottom:none; }
+  .lot-table tr:hover td { background:#f9f9f9; }
+  .badge            { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:500; }
+  .badge-available  { background:#d4edda; color:#155724; }
+  .badge-draft      { background:#f0f0f0; color:#666; }
+  .badge-on-hold    { background:#fff3cd; color:#856404; }
+  .badge-reserved   { background:#cce5ff; color:#004085; }
+  .badge-settled    { background:#e2e3e5; color:#383d41; }
+  .bulk-bar         { background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:10px 14px; margin-bottom:16px; display:none; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; }
+  .bulk-bar.active  { display:flex; }
+  .empty-stage      { padding:20px; text-align:center; color:#999; font-size:13px; font-style:italic; }
+  .select-all-cb    { cursor:pointer; }
+  .lot-cb           { cursor:pointer; }
+  #bulk-form        {}
+  .stage-actions    { display:flex; gap:6px; }
+</style>
+
+<div class="lots-header">
+  <div>
+    <h1 style="margin:0;font-size:20px;">{{ project.name }} — Lots</h1>
+    <p style="margin:4px 0 0;color:#888;font-size:13px;">
+      {{ total_lots }} lot{{ total_lots|pluralize }} across {{ stage_data|length }} stage{{ stage_data|length|pluralize }}
+    </p>
+  </div>
+  <div class="lots-actions">
+    <a href="{{ template_url }}" class="btn btn-secondary">⬇ Download CSV template</a>
+    <a href="{{ import_url }}" class="btn btn-secondary">⬆ Import CSV</a>
+    <a href="{{ add_url }}" class="btn btn-primary">+ Add lot</a>
+  </div>
+</div>
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="messagelist">
+      <p class="{{ message.tags }}">{{ message }}</p>
+    </div>
+  {% endfor %}
+{% endif %}
+
+<form id="bulk-form" method="post" action="{{ bulk_url }}">
+  {% csrf_token %}
+
+  <!-- Bulk action bar (shown when lots are selected) -->
+  <div class="bulk-bar" id="bulk-bar">
+    <strong id="selected-count">0</strong> lot(s) selected
+    <select name="bulk_action" id="bulk-action-select" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:13px;">
+      <option value="">— Choose action —</option>
+      <option value="release">Release (Draft → Available)</option>
+      <option value="unrelease">Unrelease (Available → Draft)</option>
+      <option value="change_stage">Move to stage…</option>
+    </select>
+    <!-- Stage selector — shown only for change_stage -->
+    <select name="new_stage" id="new-stage-select" style="display:none;padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:13px;">
+      <option value="">— Select stage —</option>
+      {% for item in stage_data %}
+        <option value="{{ item.stage.pk }}">{{ item.stage.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-warning btn-sm">Apply</button>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="clearSelection()">Clear</button>
+  </div>
+
+  {% for item in stage_data %}
+  <div class="stage-section">
+    <div class="stage-header">
+      <div>
+        <div class="stage-title">{{ item.stage.name }}</div>
+        <div class="stage-meta">
+          Stage {{ item.stage.stage_number }}
+          {% if item.stage.expected_release %} · Release {{ item.stage.expected_release }}{% endif %}
+          · {{ item.lots|length }} lot{{ item.lots|length|pluralize }}
+        </div>
+      </div>
+      <div class="stage-actions">
+        <a href="{{ import_url }}?stage={{ item.stage.pk }}" class="btn btn-secondary btn-sm">⬆ Import CSV</a>
+        <a href="{{ add_url }}?stage={{ item.stage.pk }}" class="btn btn-primary btn-sm">+ Add lot</a>
+      </div>
+    </div>
+
+    {% if item.lots %}
+    <table class="lot-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" class="select-all-cb" data-stage="{{ item.stage.pk }}" title="Select all in stage"></th>
+          <th>Lot #</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Bed</th>
+          <th>Bath</th>
+          <th>Car</th>
+          <th>Land m²</th>
+          <th>Floor m²</th>
+          <th>Aspect</th>
+          <th>Level</th>
+          <th>Building</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lot in item.lots %}
+        <tr>
+          <td><input type="checkbox" name="selected_lots" value="{{ lot.pk }}" class="lot-cb" data-stage="{{ item.stage.pk }}"></td>
+          <td><strong>{{ lot.lot_number }}</strong></td>
+          <td>{{ lot.get_lot_type_display }}</td>
+          <td>
+            {% if lot.is_released %}
+              <span class="badge badge-available">Released</span>
+            {% else %}
+              <span class="badge badge-draft">Draft</span>
+            {% endif %}
+          </td>
+          <td>{{ lot.bedrooms|default:"—" }}</td>
+          <td>{{ lot.bathrooms|default:"—" }}</td>
+          <td>{{ lot.car_spaces|default:"—" }}</td>
+          <td>{{ lot.land_area|default:"—" }}</td>
+          <td>{{ lot.floor_area|default:"—" }}</td>
+          <td>{{ lot.aspect|default:"—" }}</td>
+          <td>{{ lot.level|default:"—" }}</td>
+          <td>{{ lot.building|default:"—" }}</td>
+          <td>
+            <a href="{% url 'admin:projects_lot_change' lot.pk %}" class="btn btn-secondary btn-sm">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-stage">No lots in this stage yet. <a href="{{ add_url }}?stage={{ item.stage.pk }}">Add one</a> or <a href="{{ import_url }}?stage={{ item.stage.pk }}">import from CSV</a>.</div>
+    {% endif %}
+  </div>
+  {% empty %}
+  <div style="padding:32px;text-align:center;color:#999;">
+    No stages set up yet. <a href="{{ back_url }}">Add stages to this project first.</a>
+  </div>
+  {% endfor %}
+
+</form>
+
+<div style="margin-top:16px;">
+  <a href="{{ back_url }}" class="btn btn-secondary">← Back to project</a>
+</div>
+
+<script>
+  // Checkbox selection
+  function updateBulkBar() {
+    const checked = document.querySelectorAll('.lot-cb:checked');
+    const bar     = document.getElementById('bulk-bar');
+    const count   = document.getElementById('selected-count');
+    count.textContent = checked.length;
+    bar.classList.toggle('active', checked.length > 0);
+  }
+
+  document.querySelectorAll('.lot-cb').forEach(cb => {
+    cb.addEventListener('change', updateBulkBar);
+  });
+
+  // Select all within a stage
+  document.querySelectorAll('.select-all-cb').forEach(cb => {
+    cb.addEventListener('change', function() {
+      const stage   = this.dataset.stage;
+      const targets = document.querySelectorAll(`.lot-cb[data-stage="${stage}"]`);
+      targets.forEach(t => { t.checked = this.checked; });
+      updateBulkBar();
+    });
+  });
+
+  // Show stage selector for change_stage action
+  document.getElementById('bulk-action-select').addEventListener('change', function() {
+    const stageSelect = document.getElementById('new-stage-select');
+    stageSelect.style.display = this.value === 'change_stage' ? 'inline-block' : 'none';
+  });
+
+  function clearSelection() {
+    document.querySelectorAll('.lot-cb, .select-all-cb').forEach(cb => { cb.checked = false; });
+    updateBulkBar();
+  }
+</script>
+{% endblock %}

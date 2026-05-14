@@ -37,6 +37,12 @@ class SaleSerializer(serializers.ModelSerializer):
     primary_buyer_name = serializers.CharField(source="primary_buyer.display_name", read_only=True)
     agent_name         = serializers.SerializerMethodField()
 
+    # Document URLs — None if no file has been uploaded yet
+    contract_document_url    = serializers.SerializerMethodField()
+    signed_contract_url      = serializers.SerializerMethodField()
+    settlement_statement_url = serializers.SerializerMethodField()
+    sales_advice_document_url = serializers.SerializerMethodField()
+
     class Meta:
         model  = Sale
         fields = [
@@ -50,7 +56,11 @@ class SaleSerializer(serializers.ModelSerializer):
             "created_by", "approved_by", "approved_at",
             "fallen_over_at", "fallen_over_reason",
             "settled_at",
+            # Stage dates
             "contract_issued_date", "exchange_date", "settlement_date",
+            # Document URLs (read-only, derived)
+            "contract_document_url", "signed_contract_url",
+            "settlement_statement_url", "sales_advice_document_url",
             "deposit", "commission",
             "created_at",
         ]
@@ -59,12 +69,35 @@ class SaleSerializer(serializers.ModelSerializer):
             "approved_by", "approved_at",
             "fallen_over_at", "fallen_over_reason",
             "settled_at", "created_at",
+            "contract_document_url", "signed_contract_url",
+            "settlement_statement_url", "sales_advice_document_url",
         ]
 
     def get_agent_name(self, obj) -> str | None:
         if not obj.agent_id:
             return None
         return f"{obj.agent.first_name} {obj.agent.last_name}".strip()
+
+    def _build_url(self, field_file) -> str | None:
+        """Return an absolute URL for a FileField, or None if empty."""
+        if not field_file:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(field_file.url)
+        return field_file.url
+
+    def get_contract_document_url(self, obj) -> str | None:
+        return self._build_url(obj.contract_document)
+
+    def get_signed_contract_url(self, obj) -> str | None:
+        return self._build_url(obj.signed_contract)
+
+    def get_settlement_statement_url(self, obj) -> str | None:
+        return self._build_url(obj.settlement_statement)
+
+    def get_sales_advice_document_url(self, obj) -> str | None:
+        return self._build_url(obj.sales_advice_document)
 
 
 class SaleCreateSerializer(serializers.Serializer):

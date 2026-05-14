@@ -233,7 +233,7 @@ function ProjectRow({ metrics, onClick }: { metrics: ProjectMetrics; onClick: ()
       </td>
       <td style={{ padding: '14px 16px', textAlign: 'right' as const }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: '#8b5cf6' }}>
-          {metrics.project.lot_counts.total_gr ? fmt(parseFloat(metrics.project.lot_counts.total_gr)) : '—'}
+          {p.total_gr ? fmt(parseFloat(p.total_gr)) : '—'}
         </div>
         <div style={{ fontSize: 11, color: '#9ca3af' }}>project GR</div>
       </td>
@@ -316,7 +316,7 @@ export default function ReportsPage() {
       ? Math.round((totalFallenOver / (totalFallenOver + totalSettled)) * 100)
       : 0
     const totalProjectGR    = allMetrics.reduce((s, m) => {
-      const gr = m.project.lot_counts.total_gr
+      const gr = m.project.total_gr
       return s + (gr ? parseFloat(gr) : 0)
     }, 0)
     return { totalLots, totalAvailable, totalActiveSales, totalSettledGR, totalContractedGR, totalFallenOver, fallOverRate, totalProjectGR }

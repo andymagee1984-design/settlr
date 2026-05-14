@@ -62,7 +62,6 @@ class DashboardView(APIView):
             is_released=True
         ).exclude(sales__status="settled").count()
 
-        # On hold expiring within 4 hours
         expiring_soon = Sale.objects.filter(
             organisation=org,
             status="on_hold",
@@ -70,7 +69,6 @@ class DashboardView(APIView):
             on_hold_expiry__gte=now,
         ).count()
 
-        # Active sales count
         active_sales_count = Sale.objects.filter(
             organisation=org,
         ).exclude(status__in=["fallen_over", "settled"]).count()
@@ -130,12 +128,11 @@ class DashboardView(APIView):
                 "due_date": a.due_date.isoformat() if a.due_date else None,
             })
 
-        # ── My tasks ──────────────────────────────────────────────────────────
+        # ── My open activities ────────────────────────────────────────────────
         my_tasks_qs = (
             Activity.objects
             .filter(
                 organisation=org,
-                activity_type="task",
                 assigned_to=request.user,
                 completed_at__isnull=True,
             )
@@ -145,18 +142,13 @@ class DashboardView(APIView):
         my_tasks = []
         for t in my_tasks_qs:
             my_tasks.append({
-                "id": str(t.id),
-                "subject": t.subject,
-                "due_date": t.due_date.isoformat() if t.due_date else None,
-                "sale_id": str(t.sale_id) if t.sale_id else None,
-                "lot_number": (
-                    t.sale.lot.lot_number
-                    if t.sale and t.sale.lot else None
-                ),
-                "project_name": (
-                    t.sale.lot.stage.project.name
-                    if t.sale and t.sale.lot else None
-                ),
+                "id":           str(t.id),
+                "activity_type": t.activity_type,
+                "subject":      t.subject,
+                "due_date":     t.due_date.isoformat() if t.due_date else None,
+                "sale_id":      str(t.sale_id) if t.sale_id else None,
+                "lot_number":   t.sale.lot.lot_number if t.sale and t.sale.lot else None,
+                "project_name": t.sale.lot.stage.project.name if t.sale and t.sale.lot else None,
             })
 
         # ── This month stats ──────────────────────────────────────────────────
@@ -185,25 +177,25 @@ class DashboardView(APIView):
         return Response({
             "user": {
                 "first_name": request.user.first_name,
-                "last_name": request.user.last_name,
-                "role_name": request.user.role.name if request.user.role else None,
+                "last_name":  request.user.last_name,
+                "role_name":  request.user.role.name if request.user.role else None,
             },
             "metrics": {
-                "total_lots": total_lots,
-                "on_market": on_market,
-                "settled_lots": settled_lots,
-                "active_sales": active_sales_count,
+                "total_lots":    total_lots,
+                "on_market":     on_market,
+                "settled_lots":  settled_lots,
+                "active_sales":  active_sales_count,
                 "expiring_soon": expiring_soon,
             },
-            "pipeline": pipeline,
-            "projects": project_summaries,
-            "pending_approvals": pending,
-            "recent_activities": activities,
-            "my_tasks": my_tasks,
+            "pipeline":           pipeline,
+            "projects":           project_summaries,
+            "pending_approvals":  pending,
+            "recent_activities":  activities,
+            "my_tasks":           my_tasks,
             "this_month": {
-                "new_sales": new_sales,
-                "fallen_over": fallen_over,
-                "settled": settled_this_month,
+                "new_sales":       new_sales,
+                "fallen_over":     fallen_over,
+                "settled":         settled_this_month,
                 "revenue_settled": str(revenue_settled),
             },
         })

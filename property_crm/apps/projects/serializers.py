@@ -3,11 +3,34 @@ apps/projects/serializers.py
 """
 
 from decimal import Decimal
+
 from django.db.models import OuterRef, Subquery, Sum
 from rest_framework import serializers
 
 from apps.contacts.models import Solicitor
 from apps.projects.models import Lot, LotPriceHistory, Project, ProjectMedia, Stage
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Amenity definitions
+# ─────────────────────────────────────────────────────────────────────────────
+
+AMENITY_DEFINITIONS = [
+    {"code": "pool",           "label": "Pool",           "icon": "ti-ripple"},
+    {"code": "gym",            "label": "Gym",            "icon": "ti-barbell"},
+    {"code": "rooftop_garden", "label": "Rooftop garden", "icon": "ti-plant-2"},
+    {"code": "co_working",     "label": "Co-working",     "icon": "ti-briefcase"},
+    {"code": "sauna",          "label": "Sauna",          "icon": "ti-flame"},
+    {"code": "yoga_studio",    "label": "Yoga studio",    "icon": "ti-heart"},
+    {"code": "parking",        "label": "Parking",        "icon": "ti-car-garage"},
+    {"code": "pet_area",       "label": "Pet area",       "icon": "ti-dog"},
+    {"code": "tennis_court",   "label": "Tennis court",   "icon": "ti-ball-tennis"},
+    {"code": "bbq_area",       "label": "BBQ area",       "icon": "ti-flame"},
+    {"code": "concierge",      "label": "Concierge",      "icon": "ti-building-skyscraper"},
+    {"code": "spa",            "label": "Spa",            "icon": "ti-droplet"},
+]
+
+VALID_AMENITY_CODES = {a["code"] for a in AMENITY_DEFINITIONS}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -26,9 +49,6 @@ class ProjectMediaSerializer(serializers.ModelSerializer):
         ]
 
     def get_file_url(self, obj):
-        request = self.context.get("request")
-        if obj.file and request:
-            return request.build_absolute_uri(obj.file.url)
         return obj.file.url if obj.file else None
 
     def get_uploaded_by_name(self, obj):
@@ -73,7 +93,6 @@ class LotSummarySerializer(serializers.ModelSerializer):
         return obj.status
 
     def get_current_price(self, obj):
-        # Use prefetched cache — avoid re-querying DB per lot
         records = list(obj.price_history.all())
         if not records:
             return None
@@ -108,7 +127,6 @@ class LotSerializer(serializers.ModelSerializer):
         return getattr(obj, "computed_status", None) or obj.status
 
     def get_current_price(self, obj):
-        # Use prefetched cache — avoid re-querying DB per lot
         records = list(obj.price_history.all())
         if not records:
             return None
@@ -136,12 +154,7 @@ class StageSerializer(serializers.ModelSerializer):
 # GR helper — two aggregation queries, no Python loops
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _calculate_project_gr(project) -> str | None:
-    """
-    Calculates project GR using two DB aggregation queries:
-      1. Unsettled lots → sum of each lot's most recent LotPriceHistory price
-      2. Settled lots   → sum of sale_price on the settled Sale
-    """
+def _calculate_project_gr(project):
     from apps.sales.models import Sale
 
     latest_price_sq = (
@@ -182,25 +195,26 @@ def _calculate_project_gr(project) -> str | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _calculate_lot_counts(project) -> dict:
-    """
-    Returns lot status counts for a project using DB count queries.
-    No Python iteration over lots — safe regardless of lot count.
-    """
     lots = Lot.objects.filter(stage__project=project)
+
+    on_hold  = lots.filter(
+        is_released=True,
+        sales__status__in=["on_hold", "pending", "declined"]
+    ).count()
+
+    reserved = lots.filter(
+        is_released=True,
+        sales__status__in=["reserved", "contract_issued", "exchanged"]
+    ).count()
 
     return {
         "total":     lots.count(),
         "draft":     lots.filter(is_released=False).count(),
         "available": lots.filter(is_released=True, sales__isnull=True).count(),
-        "on_hold":   lots.filter(
-                         is_released=True,
-                         sales__status__in=["on_hold", "pending", "declined"]
-                     ).count(),
-        "reserved":  lots.filter(
-                         is_released=True,
-                         sales__status__in=["reserved", "contract_issued", "exchanged"]
-                     ).count(),
+        "on_hold":   on_hold,
+        "reserved":  reserved,
         "settled":   lots.filter(sales__status="settled").count(),
+        "sold":      on_hold + reserved,
         "total_gr":  _calculate_project_gr(project),
     }
 
@@ -227,7 +241,6 @@ class ProjectListSerializer(serializers.ModelSerializer):
         ]
 
     def get_lot_counts(self, obj):
-        # Counts come from DB annotations applied in the view — no extra queries
         return {
             "total":     getattr(obj, "_count_total",     0),
             "draft":     getattr(obj, "_count_draft",     0),
@@ -235,7 +248,7 @@ class ProjectListSerializer(serializers.ModelSerializer):
             "on_hold":   getattr(obj, "_count_on_hold",   0),
             "reserved":  getattr(obj, "_count_reserved",  0),
             "settled":   getattr(obj, "_count_settled",   0),
-            "total_gr":  None,  # use top-level total_gr field instead
+            "total_gr":  None,
         }
 
     def get_total_gr(self, obj):
@@ -243,12 +256,7 @@ class ProjectListSerializer(serializers.ModelSerializer):
 
     def get_hero_image_url(self, obj):
         hero = obj.media.filter(category="hero", media_type="image").first()
-        if not hero:
-            return None
-        request = self.context.get("request")
-        if hero.file and request:
-            return request.build_absolute_uri(hero.file.url)
-        return hero.file.url if hero.file else None
+        return hero.file.url if hero and hero.file else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -260,6 +268,7 @@ class ProjectDetailSerializer(serializers.ModelSerializer):
     media      = serializers.SerializerMethodField()
     solicitor  = SolicitorMinimalSerializer(read_only=True)
     lot_counts = serializers.SerializerMethodField()
+    amenities  = serializers.SerializerMethodField()
 
     class Meta:
         model  = Project
@@ -270,16 +279,44 @@ class ProjectDetailSerializer(serializers.ModelSerializer):
             "billing_lot_count", "billing_start_date", "billing_end_date",
             "billing_status",
             "lot_counts", "stages", "media",
+            "amenities",
             "created_at",
         ]
 
     def get_lot_counts(self, obj):
-        # Pure DB aggregation — no Python lot iteration
         return _calculate_lot_counts(obj)
 
+    def get_amenities(self, obj):
+        enabled = set(obj.amenities or [])
+        return [
+            defn for defn in AMENITY_DEFINITIONS
+            if defn["code"] in enabled
+        ]
+
     def get_media(self, obj):
-        grouped = {k: [] for k in ("hero", "gallery", "brochure", "site_map", "floor_plan", "other")}
-        for item in ProjectMediaSerializer(obj.media.all(), many=True, context=self.context).data:
+        """
+        Returns media grouped by category for easy frontend rendering.
+        {
+          "hero": [...],
+          "gallery": [...],
+          "brochure": [...],
+          "site_map": [...],
+          "floor_plan": [...],
+          "other": [...]
+        }
+        """
+        all_media = obj.media.all()
+        serialized = ProjectMediaSerializer(all_media, many=True, context=self.context).data
+
+        grouped = {
+            "hero":       [],
+            "gallery":    [],
+            "brochure":   [],
+            "site_map":   [],
+            "floor_plan": [],
+            "other":      [],
+        }
+        for item in serialized:
             cat = item.get("category", "other")
             if cat in grouped:
                 grouped[cat].append(item)

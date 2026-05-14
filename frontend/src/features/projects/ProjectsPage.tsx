@@ -104,15 +104,18 @@ function formatGR(totalGr: string | null | undefined): string {
 
 function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: () => void }) {
   const c = project.lot_counts
-  const onMarket = c.available + c.on_hold + c.reserved
+
+  // Available = only lots with no active sale
+  // Active sales = on_hold + reserved (live sales, pre-settlement)
+  const activeSales = c.on_hold + c.reserved
 
   return (
     <button
       onClick={onClick}
-      className="group w-full text-left rounded-xl border border-gray-200 bg-white overflow-hidden transition-all duration-150 hover:border-gray-300 hover:shadow-sm hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+      className="group w-full text-left rounded-xl border border-gray-200 bg-white overflow-hidden transition-all duration-150 hover:border-gray-300 hover:shadow-sm hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 flex flex-col"
     >
-      {/* Hero image or placeholder */}
-      <div className="relative h-32 bg-gray-50 overflow-hidden">
+      {/* Hero image — fixed height, always cropped */}
+      <div className="relative h-48 bg-gray-50 overflow-hidden shrink-0">
         {project.hero_image_url ? (
           <img
             src={project.hero_image_url}
@@ -130,35 +133,37 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
       </div>
 
       {/* Body */}
-      <div className="p-4">
+      <div className="p-4 flex flex-col flex-1">
         <p className="text-sm font-medium text-gray-900 leading-snug">{project.name}</p>
         <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
           <MapPin className="h-3 w-3 shrink-0" />
           {project.address}
         </p>
 
-        {project.tagline && (
-          <p className="mt-2.5 text-xs italic text-gray-500 pb-2.5 border-b border-gray-100">
-            {project.tagline}
-          </p>
-        )}
+        {/* Tagline — always reserves space so stats row aligns across cards */}
+        <div className="mt-2.5 pb-2.5 border-b border-gray-100 min-h-[32px]">
+          {project.tagline && (
+            <p className="text-xs italic text-gray-500">{project.tagline}</p>
+          )}
+        </div>
 
         <div className="mt-3">
           <LotStatusBar counts={c} />
         </div>
 
+        {/* Stats: Total lots | Available | Active sales | GR */}
         <div className="mt-3 grid grid-cols-4 gap-2 text-center">
           <div>
             <p className="text-base font-medium text-gray-900">{c.total}</p>
             <p className="text-[11px] text-gray-400">Total lots</p>
           </div>
           <div>
-            <p className="text-base font-medium text-emerald-600">{onMarket}</p>
-            <p className="text-[11px] text-gray-400">On market</p>
+            <p className="text-base font-medium text-emerald-600">{c.available}</p>
+            <p className="text-[11px] text-gray-400">Available</p>
           </div>
           <div>
-            <p className="text-base font-medium text-gray-400">{c.settled}</p>
-            <p className="text-[11px] text-gray-400">Settled</p>
+            <p className="text-base font-medium text-amber-500">{activeSales}</p>
+            <p className="text-[11px] text-gray-400">Active sales</p>
           </div>
           <div>
             <p className="text-base font-medium text-indigo-600">{formatGR(project.total_gr)}</p>
@@ -167,8 +172,8 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2.5">
+      {/* Footer — pinned to bottom */}
+      <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2.5 mt-auto">
         <div className="flex items-center gap-1 text-xs text-gray-400">
           <Layers className="h-3 w-3" />
           {project.stage_count} stage{project.stage_count !== 1 ? 's' : ''}

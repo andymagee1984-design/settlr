@@ -1,5 +1,11 @@
+// src/components/Sidebar.tsx
+
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+
+interface Props {
+  unreadCount: number
+}
 
 const NAV = [
   {
@@ -25,13 +31,14 @@ const NAV = [
   {
     section: 'Insights',
     items: [
-      { to: '/reports',    icon: 'ti-chart-bar',        label: 'Reports' },
-      { to: '/activities', icon: 'ti-checkbox',         label: 'Activities' },
+      { to: '/reports',        icon: 'ti-chart-bar',    label: 'Reports' },
+      { to: '/activities',     icon: 'ti-checkbox',     label: 'Activities' },
+      { to: '/notifications',  icon: 'ti-bell',         label: 'Notifications' },
     ],
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ unreadCount }: Props) {
   const user      = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
 
@@ -40,31 +47,13 @@ export default function Sidebar() {
     : '?'
 
   return (
-    <div
-      style={{
-        width: 220,
-        background: '#111827',
-        display: 'flex',
-        flexDirection: 'column',
-        flexShrink: 0,
-        height: '100vh',
-      }}
-    >
-      <div
-        style={{
-          padding: '20px 16px 12px',
-          borderBottom: '0.5px solid rgba(255,255,255,0.08)',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 500,
-            color: 'rgba(255,255,255,0.9)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-          }}
-        >
+    <div style={{
+      width: 220, background: '#111827',
+      display: 'flex', flexDirection: 'column',
+      flexShrink: 0, height: '100vh',
+    }}>
+      <div style={{ padding: '20px 16px 12px', borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Property CRM
         </div>
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
@@ -75,96 +64,75 @@ export default function Sidebar() {
       <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
         {NAV.map(({ section, items }) => (
           <div key={section}>
-            <div
-              style={{
-                padding: '12px 16px 4px',
-                fontSize: 10,
-                fontWeight: 500,
-                color: 'rgba(255,255,255,0.28)',
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-              }}
-            >
+            <div style={{
+              padding: '12px 16px 4px', fontSize: 10, fontWeight: 500,
+              color: 'rgba(255,255,255,0.28)', letterSpacing: '0.1em', textTransform: 'uppercase',
+            }}>
               {section}
             </div>
-            {items.map(({ to, icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                style={({ isActive }) => ({
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: isActive ? '8px 16px 8px 14px' : '8px 16px',
-                  fontSize: 13,
-                  color: isActive ? '#fff' : 'rgba(255,255,255,0.55)',
-                  background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
-                  borderLeft: isActive ? '2px solid #3b82f6' : '2px solid transparent',
-                  textDecoration: 'none',
-                })}
-              >
-                <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 16 }} />
-                {label}
-              </NavLink>
-            ))}
+            {items.map(({ to, icon, label }) => {
+              const isNotifications = to === '/notifications'
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  style={({ isActive }) => ({
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: isActive ? '8px 16px 8px 14px' : '8px 16px',
+                    fontSize: 13,
+                    color: isActive ? '#fff' : 'rgba(255,255,255,0.55)',
+                    background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+                    borderLeft: isActive ? '2px solid #3b82f6' : '2px solid transparent',
+                    textDecoration: 'none',
+                  })}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 16 }} />
+                    {label}
+                  </div>
+
+                  {/* Unread badge on Notifications item */}
+                  {isNotifications && unreadCount > 0 && (
+                    <span style={{
+                      background: '#E24B4A',
+                      color: '#fff',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: '1px 6px',
+                      borderRadius: 99,
+                      minWidth: 18,
+                      textAlign: 'center',
+                      lineHeight: '16px',
+                    }}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </NavLink>
+              )
+            })}
           </div>
         ))}
       </nav>
 
-      <div
-        style={{
-          padding: '12px 16px',
-          borderTop: '0.5px solid rgba(255,255,255,0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-        }}
-      >
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: '50%',
-            background: '#1d4ed8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 11,
-            fontWeight: 500,
-            color: '#fff',
-            flexShrink: 0,
-          }}
-        >
+      <div style={{
+        padding: '12px 16px', borderTop: '0.5px solid rgba(255,255,255,0.08)',
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%', background: '#1d4ed8',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, fontWeight: 500, color: '#fff', flexShrink: 0,
+        }}>
           {initials}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 12,
-              color: 'rgba(255,255,255,0.8)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {user?.first_name} {user?.last_name}
           </div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-            {user?.email ?? ''}
-          </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{user?.email ?? ''}</div>
         </div>
-        <button
-          onClick={clearAuth}
-          title="Log out"
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-            color: 'rgba(255,255,255,0.3)',
-          }}
-        >
+        <button onClick={clearAuth} title="Log out" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'rgba(255,255,255,0.3)' }}>
           <i className="ti ti-logout" style={{ fontSize: 14 }} aria-label="Log out" />
         </button>
       </div>

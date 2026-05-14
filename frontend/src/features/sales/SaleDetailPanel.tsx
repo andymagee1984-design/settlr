@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { getSale } from '../../api/sales'
-import { getActivities, createActivity, completeActivity } from '../../api/activities'
+import { getActivities, completeActivity } from '../../api/activities'
 import { useAuthStore } from '../../store/authStore'
 import client from '../../api/client'
+import LogActivityForm from '../../components/LogActivityForm'
+import ActivityDetailPanel from '../../components/ActivityDetailPanel'
 import type { Sale } from '../../api/sales'
 import type { Activity } from '../../api/activities'
 
@@ -40,15 +42,10 @@ const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string }
   note:       { label: 'Note',       icon: 'ti-note',        color: '#6b7280' },
 }
 
-const inputStyle = {
+const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 6,
   border: '1px solid #d1d5db', fontSize: 13, color: '#111827',
-  boxSizing: 'border-box' as const,
-}
-
-const labelStyle = {
-  fontSize: 12, fontWeight: 500 as const,
-  color: '#374151', marginBottom: 4, display: 'block',
+  boxSizing: 'border-box',
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -75,37 +72,145 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Documents section
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DocumentsSection({ sale }: { sale: Sale }) {
+  const s = sale as any
+
+  // All possible document rows with the statuses they become visible at
+  const rows = [
+    {
+      label:     'Sales Advice',
+      dateLabel: 'Approved',
+      date:      s.approved_at,
+      url:       s.sales_advice_document_url,
+      gate:      ['reserved', 'contract_issued', 'exchanged', 'settled', 'fallen_over'],
+    },
+    {
+      label:     'Contract',
+      dateLabel: 'Contract Issued',
+      date:      s.contract_issued_date,
+      url:       s.contract_document_url,
+      gate:      ['contract_issued', 'exchanged', 'settled'],
+    },
+    {
+      label:     'Signed Contract',
+      dateLabel: 'Exchange Date',
+      date:      s.exchange_date,
+      url:       s.signed_contract_url,
+      gate:      ['exchanged', 'settled'],
+    },
+    {
+      label:     'Settlement Statement',
+      dateLabel: 'Settlement Date',
+      date:      s.settlement_date,
+      url:       s.settlement_statement_url,
+      gate:      ['settled'],
+    },
+  ]
+
+  const visibleRows = rows.filter(r => r.gate.includes(sale.status))
+
+  if (visibleRows.length === 0) {
+    return (
+      <div style={{ padding: '12px 14px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, color: '#9ca3af' }}>
+        Documents will appear here as the sale progresses.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {visibleRows.map(row => (
+        <div key={row.label} style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px', background: '#ffffff',
+          border: '1px solid #e2e8f0', borderRadius: 8,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 6, flexShrink: 0,
+              background: row.url ? '#eff6ff' : '#f9fafb',
+              border: `1px solid ${row.url ? '#bfdbfe' : '#e5e7eb'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke={row.url ? '#3b82f6' : '#9ca3af'} strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+            </div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 500, color: '#111827', margin: 0 }}>{row.label}</p>
+              {row.date && (
+                <p style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 0' }}>
+                  {row.dateLabel}: {new Date(row.date).toLocaleDateString('en-AU', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
+                </p>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {row.url ? (
+              <>
+                <span style={{
+                  fontSize: 11, fontWeight: 500, color: '#15803d',
+                  background: '#f0fdf4', border: '1px solid #bbf7d0',
+                  borderRadius: 99, padding: '2px 8px',
+                }}>Uploaded</span>
+                <a href={row.url} target="_blank" rel="noopener noreferrer" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 12, fontWeight: 500, color: '#2563eb',
+                  textDecoration: 'none', padding: '4px 10px',
+                  border: '1px solid #bfdbfe', borderRadius: 6, background: '#eff6ff',
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.5"
+                    strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                  View
+                </a>
+              </>
+            ) : (
+              <span style={{
+                fontSize: 11, fontWeight: 500, color: '#9ca3af',
+                background: '#f9fafb', border: '1px solid #e5e7eb',
+                borderRadius: 99, padding: '2px 8px',
+              }}>Not uploaded</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Commission section
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CommissionSection({ sale, refetch }: { sale: Sale; refetch: () => void }) {
   const user = useAuthStore(s => s.user)
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState({
-    commission_type:  '',
-    rate:             '',
-    flat_amount:      '',
-    incentive_amount: '',
-    incentive_notes:  '',
-  })
+  const [form, setForm] = useState({ commission_type: '', rate: '', flat_amount: '', incentive_amount: '', incentive_notes: '' })
   const [error, setError] = useState<string | null>(null)
 
   const canManage  = user?.role?.permissions?.some(p => p.code === 'sale.approve') ?? false
   const commission = (sale as any).commission
 
-  const { mutate: approve, isPending: approving } = useMutation({
-    mutationFn: () => client.post(`/commissions/${commission.id}/approve/`).then(r => r.data),
-    onSuccess: () => refetch(),
-    onError: (e: any) => setError(e?.response?.data?.detail ?? 'Failed'),
-  })
-
-  const { mutate: markPaid, isPending: markingPaid } = useMutation({
-    mutationFn: () => client.post(`/commissions/${commission.id}/mark_paid/`).then(r => r.data),
-    onSuccess: () => refetch(),
-    onError: (e: any) => setError(e?.response?.data?.detail ?? 'Failed'),
-  })
-
-  const { mutate: save, isPending: saving } = useMutation({
+  const { mutate: approve,  isPending: approving  } = useMutation({ mutationFn: () => client.post(`/commissions/${commission.id}/approve/`).then(r => r.data),   onSuccess: () => refetch(), onError: (e: any) => setError(e?.response?.data?.detail ?? 'Failed') })
+  const { mutate: markPaid, isPending: markingPaid } = useMutation({ mutationFn: () => client.post(`/commissions/${commission.id}/mark_paid/`).then(r => r.data), onSuccess: () => refetch(), onError: (e: any) => setError(e?.response?.data?.detail ?? 'Failed') })
+  const { mutate: save,     isPending: saving      } = useMutation({
     mutationFn: () => client.patch(`/commissions/${commission.id}/`, {
       commission_type:  form.commission_type  || undefined,
       rate:             form.rate             ? parseFloat(form.rate)             : null,
@@ -114,66 +219,39 @@ function CommissionSection({ sale, refetch }: { sale: Sale; refetch: () => void 
       incentive_notes:  form.incentive_notes  || '',
     }).then(r => r.data),
     onSuccess: () => { setEditing(false); refetch() },
-    onError: (e: any) => setError(e?.response?.data?.detail ?? 'Save failed'),
+    onError:   (e: any) => setError(e?.response?.data?.detail ?? 'Save failed'),
   })
 
-  if (!commission) {
-    return (
-      <div style={{ fontSize: 13, color: '#9ca3af' }}>
-        Commission will be created when the sale reaches Exchanged.
-      </div>
-    )
-  }
+  if (!commission) return <div style={{ fontSize: 13, color: '#9ca3af' }}>Commission will be created when the sale reaches Exchanged.</div>
 
   const cs = COMMISSION_STATUS[commission.status] ?? COMMISSION_STATUS.pending
-
   const commissionAmount = () => {
     if (commission.calculated_amount) return `$${Number(commission.calculated_amount).toLocaleString()}`
-    if (commission.commission_type === 'percentage' && commission.rate && (sale as any).sale_price) {
+    if (commission.commission_type === 'percentage' && commission.rate && (sale as any).sale_price)
       return `$${(Number((sale as any).sale_price) * Number(commission.rate) / 100).toLocaleString()} (${commission.rate}%)`
-    }
-    if (commission.commission_type === 'flat' && commission.flat_amount) {
+    if (commission.commission_type === 'flat' && commission.flat_amount)
       return `$${Number(commission.flat_amount).toLocaleString()}`
-    }
     return 'Not yet calculated'
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{
-        background: '#f9fafb', borderRadius: 8, padding: '12px 14px',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
+      <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{commissionAmount()}</div>
-          {commission.incentive_amount && (
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-              + ${Number(commission.incentive_amount).toLocaleString()} incentive
-            </div>
-          )}
+          {commission.incentive_amount && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>+ ${Number(commission.incentive_amount).toLocaleString()} incentive</div>}
         </div>
-        <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: cs.bg, color: cs.color }}>
-          {cs.label}
-        </span>
+        <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: cs.bg, color: cs.color }}>{cs.label}</span>
       </div>
 
       {!editing && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Field label="Agent" value={(sale as any).agent_name} />
           <Field label="Type" value={commission.commission_type === 'percentage' ? 'Percentage' : commission.commission_type === 'flat' ? 'Flat amount' : '—'} />
-          <Field label="Rate / amount" value={
-            commission.commission_type === 'percentage' ? `${commission.rate}%`
-            : commission.flat_amount ? `$${Number(commission.flat_amount).toLocaleString()}`
-            : '—'
-          } />
+          <Field label="Rate / amount" value={commission.commission_type === 'percentage' ? `${commission.rate}%` : commission.flat_amount ? `$${Number(commission.flat_amount).toLocaleString()}` : '—'} />
           <Field label="Approved" value={commission.approved_at ? new Date(commission.approved_at).toLocaleDateString('en-AU') : '—'} />
           <Field label="Paid" value={commission.paid_at ? new Date(commission.paid_at).toLocaleDateString('en-AU') : '—'} />
-          {commission.incentive_notes && (
-            <div style={{ gridColumn: '1 / -1' }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>Incentive notes</div>
-              <div style={{ fontSize: 13, color: '#374151' }}>{commission.incentive_notes}</div>
-            </div>
-          )}
+          {commission.incentive_notes && <div style={{ gridColumn: '1 / -1' }}><div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>Incentive notes</div><div style={{ fontSize: 13, color: '#374151' }}>{commission.incentive_notes}</div></div>}
         </div>
       )}
 
@@ -182,53 +260,19 @@ function CommissionSection({ sale, refetch }: { sale: Sale; refetch: () => void 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Type</label>
-              <select style={inputStyle} value={form.commission_type}
-                onChange={e => setForm({ ...form, commission_type: e.target.value })}>
-                <option value="">Select…</option>
-                <option value="percentage">Percentage</option>
-                <option value="flat">Flat amount</option>
+              <select style={inputStyle} value={form.commission_type} onChange={e => setForm({ ...form, commission_type: e.target.value })}>
+                <option value="">Select…</option><option value="percentage">Percentage</option><option value="flat">Flat amount</option>
               </select>
             </div>
-            {form.commission_type === 'percentage' && (
-              <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Rate (%)</label>
-                <input style={inputStyle} type="number" step="0.01" value={form.rate}
-                  onChange={e => setForm({ ...form, rate: e.target.value })} />
-              </div>
-            )}
-            {form.commission_type === 'flat' && (
-              <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Amount ($)</label>
-                <input style={inputStyle} type="number" value={form.flat_amount}
-                  onChange={e => setForm({ ...form, flat_amount: e.target.value })} />
-              </div>
-            )}
-            <div>
-              <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Incentive ($)</label>
-              <input style={inputStyle} type="number" value={form.incentive_amount}
-                onChange={e => setForm({ ...form, incentive_amount: e.target.value })} />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Incentive notes</label>
-              <input style={inputStyle} type="text" value={form.incentive_notes}
-                onChange={e => setForm({ ...form, incentive_notes: e.target.value })} />
-            </div>
+            {form.commission_type === 'percentage' && <div><label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Rate (%)</label><input style={inputStyle} type="number" step="0.01" value={form.rate} onChange={e => setForm({ ...form, rate: e.target.value })} /></div>}
+            {form.commission_type === 'flat'       && <div><label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Amount ($)</label><input style={inputStyle} type="number" value={form.flat_amount} onChange={e => setForm({ ...form, flat_amount: e.target.value })} /></div>}
+            <div><label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Incentive ($)</label><input style={inputStyle} type="number" value={form.incentive_amount} onChange={e => setForm({ ...form, incentive_amount: e.target.value })} /></div>
+            <div style={{ gridColumn: '1 / -1' }}><label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>Incentive notes</label><input style={inputStyle} type="text" value={form.incentive_notes} onChange={e => setForm({ ...form, incentive_notes: e.target.value })} /></div>
           </div>
           {error && <div style={{ fontSize: 12, color: '#dc2626' }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => save()} disabled={saving} style={{
-              padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-              background: '#111827', color: '#fff', border: 'none', cursor: 'pointer',
-              opacity: saving ? 0.6 : 1,
-            }}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button onClick={() => setEditing(false)} style={{
-              padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-              background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
-            }}>
-              Cancel
-            </button>
+            <button onClick={() => save()} disabled={saving} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: '#111827', color: '#fff', border: 'none', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>{saving ? 'Saving…' : 'Save'}</button>
+            <button onClick={() => setEditing(false)} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -237,152 +281,15 @@ function CommissionSection({ sale, refetch }: { sale: Sale; refetch: () => void 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
           {commission.status === 'pending' && (
             <>
-              <button onClick={() => {
-                setForm({
-                  commission_type:  commission.commission_type ?? '',
-                  rate:             commission.rate?.toString() ?? '',
-                  flat_amount:      commission.flat_amount?.toString() ?? '',
-                  incentive_amount: commission.incentive_amount?.toString() ?? '',
-                  incentive_notes:  commission.incentive_notes ?? '',
-                })
-                setEditing(true)
-              }} style={{
-                padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-                background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
-              }}>
-                Edit details
-              </button>
-              <button onClick={() => approve()} disabled={approving} style={{
-                padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-                background: '#1e40af', color: '#fff', border: 'none', cursor: 'pointer',
-                opacity: approving ? 0.6 : 1,
-              }}>
-                {approving ? 'Approving…' : 'Approve'}
-              </button>
+              <button onClick={() => { setForm({ commission_type: commission.commission_type ?? '', rate: commission.rate?.toString() ?? '', flat_amount: commission.flat_amount?.toString() ?? '', incentive_amount: commission.incentive_amount?.toString() ?? '', incentive_notes: commission.incentive_notes ?? '' }); setEditing(true) }} style={{ padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer' }}>Edit details</button>
+              <button onClick={() => approve()} disabled={approving} style={{ padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: '#1e40af', color: '#fff', border: 'none', cursor: 'pointer', opacity: approving ? 0.6 : 1 }}>{approving ? 'Approving…' : 'Approve'}</button>
             </>
           )}
           {commission.status === 'approved' && (
-            <button onClick={() => markPaid()} disabled={markingPaid} style={{
-              padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-              background: '#059669', color: '#fff', border: 'none', cursor: 'pointer',
-              opacity: markingPaid ? 0.6 : 1,
-            }}>
-              {markingPaid ? 'Saving…' : 'Mark as paid'}
-            </button>
+            <button onClick={() => markPaid()} disabled={markingPaid} style={{ padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: '#059669', color: '#fff', border: 'none', cursor: 'pointer', opacity: markingPaid ? 0.6 : 1 }}>{markingPaid ? 'Saving…' : 'Mark as paid'}</button>
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Activity log form
-// ─────────────────────────────────────────────────────────────────────────────
-
-function LogActivityForm({ saleId, primaryBuyerId, onSaved }: {
-  saleId: string
-  primaryBuyerId: string
-  onSaved: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({
-    activity_type: 'note',
-    subject: '',
-    description: '',
-    activity_date: new Date().toISOString().slice(0, 16),
-    due_date: '',
-  })
-  const [error, setError] = useState<string | null>(null)
-
-  const mutation = useMutation({
-    mutationFn: () => createActivity({
-      activity_type: form.activity_type,
-      subject: form.subject,
-      description: form.description,
-      activity_date: form.activity_date,
-      sale: saleId,
-      contact_type: 'Buyer',
-      contact_id: primaryBuyerId,
-      ...(form.activity_type === 'task' && form.due_date && { due_date: form.due_date }),
-    }),
-    onSuccess: () => {
-      setOpen(false)
-      setForm({ activity_type: 'note', subject: '', description: '', activity_date: new Date().toISOString().slice(0, 16), due_date: '' })
-      onSaved()
-    },
-    onError: (e: any) => setError(e?.response?.data?.detail ?? 'Something went wrong.'),
-  })
-
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)} style={{
-        padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-        background: '#111827', color: '#fff', border: 'none', cursor: 'pointer',
-      }}>
-        <i className="ti ti-plus" style={{ marginRight: 5 }} />
-        Log Activity
-      </button>
-    )
-  }
-
-  return (
-    <div style={{ background: '#f9fafb', borderRadius: 8, padding: 16, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <div>
-          <label style={labelStyle}>Type</label>
-          <select style={inputStyle} value={form.activity_type}
-            onChange={(e) => setForm({ ...form, activity_type: e.target.value })}>
-            {Object.entries(TYPE_CONFIG).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label style={labelStyle}>Date & time</label>
-          <input style={inputStyle} type="datetime-local" value={form.activity_date}
-            onChange={(e) => setForm({ ...form, activity_date: e.target.value })} />
-        </div>
-      </div>
-      <div>
-        <label style={labelStyle}>Subject *</label>
-        <input style={inputStyle} value={form.subject}
-          onChange={(e) => setForm({ ...form, subject: e.target.value })}
-          placeholder="e.g. Called buyer to confirm settlement date" />
-      </div>
-      <div>
-        <label style={labelStyle}>Notes</label>
-        <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' as const }}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })} />
-      </div>
-      {form.activity_type === 'task' && (
-        <div>
-          <label style={labelStyle}>Due date</label>
-          <input style={inputStyle} type="date" value={form.due_date}
-            onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
-        </div>
-      )}
-      {error && <div style={{ fontSize: 12, color: '#dc2626' }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => {
-          if (!form.subject.trim()) { setError('Subject is required.'); return }
-          setError(null)
-          mutation.mutate()
-        }} disabled={mutation.isPending} style={{
-          padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-          background: '#111827', color: '#fff', border: 'none', cursor: 'pointer',
-          opacity: mutation.isPending ? 0.6 : 1,
-        }}>
-          {mutation.isPending ? 'Saving…' : 'Save'}
-        </button>
-        <button onClick={() => setOpen(false)} style={{
-          padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-          background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
-        }}>
-          Cancel
-        </button>
-      </div>
     </div>
   )
 }
@@ -392,89 +299,59 @@ function LogActivityForm({ saleId, primaryBuyerId, onSaved }: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function SaleDetailPanel({ saleId, onClose }: Props) {
-  const [visible, setVisible] = useState(false)
+  const [visible,          setVisible]          = useState(false)
+  const [showActivityForm, setShowActivityForm] = useState(false)
+  const [selectedActivity, setSelectedActivity] = useState<string | null>(null)
 
-  // Trigger entrance animation on mount
   useEffect(() => {
     const id = requestAnimationFrame(() => setVisible(true))
     return () => cancelAnimationFrame(id)
   }, [])
 
-  const handleClose = () => {
-    setVisible(false)
-    setTimeout(onClose, 240)
-  }
+  const handleClose = () => { setVisible(false); setTimeout(onClose, 240) }
 
   const { data: sale, isLoading: loadingSale, refetch } = useQuery<Sale>({
     queryKey: ['sale', saleId],
-    queryFn: () => getSale(saleId),
+    queryFn:  () => getSale(saleId),
   })
 
   const { data: activities = [], refetch: refetchActivities } = useQuery<Activity[]>({
     queryKey: ['activities', 'sale', saleId],
-    queryFn: () => getActivities({ sale: saleId }),
+    queryFn:  () => getActivities({ sale: saleId }),
   })
 
   const completeMutation = useMutation({
     mutationFn: completeActivity,
-    onSuccess: () => refetchActivities(),
+    onSuccess:  () => refetchActivities(),
   })
 
   const sc = sale ? (STATUS_COLOURS[sale.status] ?? { bg: '#f3f4f6', color: '#6b7280', label: sale.status }) : null
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={handleClose}
-        style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.3)',
-          zIndex: 900,
-          opacity: visible ? 1 : 0,
-          transition: 'opacity 240ms ease',
-        }}
-      />
+      <div onClick={handleClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 900, opacity: visible ? 1 : 0, transition: 'opacity 240ms ease' }} />
 
-      {/* Panel */}
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 520,
-        background: '#fff', zIndex: 901,
-        display: 'flex', flexDirection: 'column',
+        background: '#fff', zIndex: 901, display: 'flex', flexDirection: 'column',
         boxShadow: '-8px 0 40px rgba(0,0,0,0.12)',
         transform: visible ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 240ms cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         {/* Header */}
-        <div style={{
-          padding: '20px 24px', borderBottom: '1px solid #f3f4f6',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          flexShrink: 0,
-        }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
           <div>
             {sale && (
               <>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
-                  Lot {sale.lot_number} — {sale.project_name}
-                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>Lot {sale.lot_number} — {sale.project_name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                  {sc && (
-                    <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>
-                      {sc.label}
-                    </span>
-                  )}
-                  {sale.sale_price && (
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>
-                      ${Number(sale.sale_price).toLocaleString()}
-                    </span>
-                  )}
+                  {sc && <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>{sc.label}</span>}
+                  {(sale as any).sale_price && <span style={{ fontSize: 13, color: '#6b7280' }}>${Number((sale as any).sale_price).toLocaleString()}</span>}
                 </div>
               </>
             )}
           </div>
-          <button onClick={handleClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 20, padding: 0 }}>
-            <i className="ti ti-x" />
-          </button>
+          <button onClick={handleClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 20, padding: 0 }}><i className="ti ti-x" /></button>
         </div>
 
         {/* Body */}
@@ -486,7 +363,7 @@ export default function SaleDetailPanel({ saleId, onClose }: Props) {
               <Section title="Buyer">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <Field label="Name"       value={sale.primary_buyer_name} />
-                  <Field label="Sale price" value={sale.sale_price ? `$${Number(sale.sale_price).toLocaleString()}` : null} />
+                  <Field label="Sale price" value={(sale as any).sale_price ? `$${Number((sale as any).sale_price).toLocaleString()}` : null} />
                 </div>
               </Section>
 
@@ -494,13 +371,17 @@ export default function SaleDetailPanel({ saleId, onClose }: Props) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <Field label="Status"      value={sc?.label} />
                   <Field label="Created"     value={new Date(sale.created_at).toLocaleDateString('en-AU')} />
-                  <Field label="Cooling off" value={sale.cooling_off_waived ? 'Waived' : sale.cooling_off_expiry ? `Expires ${new Date(sale.cooling_off_expiry).toLocaleDateString('en-AU')}` : '—'} />
-                  <Field label="Finance"     value={sale.subject_to_finance ? `Due ${sale.finance_due_date ? new Date(sale.finance_due_date).toLocaleDateString('en-AU') : 'TBC'}` : 'Not applicable'} />
-                  {sale.approved_at    && <Field label="Approved"    value={new Date(sale.approved_at).toLocaleDateString('en-AU')} />}
-                  {sale.settled_at     && <Field label="Settled"     value={new Date(sale.settled_at).toLocaleDateString('en-AU')} />}
-                  {sale.fallen_over_at && <Field label="Fallen over" value={new Date(sale.fallen_over_at).toLocaleDateString('en-AU')} />}
-                  {sale.fallen_over_reason && <Field label="Reason"  value={sale.fallen_over_reason} />}
+                  <Field label="Cooling off" value={(sale as any).cooling_off_waived ? 'Waived' : (sale as any).cooling_off_expiry ? `Expires ${new Date((sale as any).cooling_off_expiry).toLocaleDateString('en-AU')}` : '—'} />
+                  <Field label="Finance"     value={(sale as any).subject_to_finance ? `Due ${(sale as any).finance_due_date ? new Date((sale as any).finance_due_date).toLocaleDateString('en-AU') : 'TBC'}` : 'Not applicable'} />
+                  {(sale as any).approved_at     && <Field label="Approved"    value={new Date((sale as any).approved_at).toLocaleDateString('en-AU')} />}
+                  {(sale as any).settled_at      && <Field label="Settled"     value={new Date((sale as any).settled_at).toLocaleDateString('en-AU')} />}
+                  {(sale as any).fallen_over_at  && <Field label="Fallen over" value={new Date((sale as any).fallen_over_at).toLocaleDateString('en-AU')} />}
+                  {(sale as any).fallen_over_reason && <Field label="Reason"   value={(sale as any).fallen_over_reason} />}
                 </div>
+              </Section>
+
+              <Section title="Documents">
+                <DocumentsSection sale={sale} />
               </Section>
 
               {(sale as any).agent && (
@@ -509,55 +390,64 @@ export default function SaleDetailPanel({ saleId, onClose }: Props) {
                 </Section>
               )}
 
-              {sale.on_hold_expiry && sale.status === 'on_hold' && (
+              {(sale as any).on_hold_expiry && sale.status === 'on_hold' && (
                 <Section title="On Hold Timer">
                   <div style={{ fontSize: 13, color: '#854d0e', background: '#fef9c3', padding: '10px 12px', borderRadius: 6 }}>
                     <i className="ti ti-clock" style={{ marginRight: 6 }} />
-                    Expires {new Date(sale.on_hold_expiry).toLocaleString('en-AU')}
+                    Expires {new Date((sale as any).on_hold_expiry).toLocaleString('en-AU')}
                   </div>
                 </Section>
               )}
 
               <Section title="Activity Log">
-                <LogActivityForm
-                  saleId={saleId}
-                  primaryBuyerId={sale.primary_buyer}
-                  onSaved={() => refetchActivities()}
-                />
-                {activities.length === 0 ? (
-                  <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 12 }}>No activities logged.</div>
+                {!showActivityForm ? (
+                  <button onClick={() => setShowActivityForm(true)} style={{
+                    padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                    background: '#111827', color: '#fff', border: 'none', cursor: 'pointer', marginBottom: 12,
+                  }}>
+                    <i className="ti ti-plus" style={{ marginRight: 5 }} />Log Activity
+                  </button>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <LogActivityForm
+                      saleId={saleId}
+                      contactType="Buyer"
+                      contactId={sale.primary_buyer}
+                      onSaved={() => { setShowActivityForm(false); refetchActivities() }}
+                      onCancel={() => setShowActivityForm(false)}
+                    />
+                  </div>
+                )}
+
+                {activities.length === 0 ? (
+                  <div style={{ fontSize: 13, color: '#9ca3af' }}>No activities logged.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {activities.map((a) => {
                       const tc = TYPE_CONFIG[a.activity_type] ?? { label: a.activity_type, icon: 'ti-circle', color: '#6b7280' }
                       const isTask = a.activity_type === 'task'
                       return (
-                        <div key={a.id} style={{
-                          background: '#f9fafb', borderRadius: 8, padding: '10px 12px',
-                          opacity: a.is_complete ? 0.6 : 1,
-                          display: 'flex', gap: 10, alignItems: 'flex-start',
-                        }}>
-                          <div style={{
-                            width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-                            background: tc.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        <div key={a.id}
+                          onClick={() => setSelectedActivity(a.id)}
+                          style={{
+                            background: '#f9fafb', borderRadius: 8, padding: '10px 12px',
+                            opacity: a.is_complete ? 0.6 : 1,
+                            display: 'flex', gap: 10, alignItems: 'flex-start',
+                            cursor: 'pointer',
                           }}>
+                          <div style={{ width: 26, height: 26, borderRadius: 6, flexShrink: 0, background: tc.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <i className={`ti ${tc.icon}`} style={{ color: tc.color, fontSize: 13 }} />
                           </div>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', textDecoration: a.is_complete ? 'line-through' : 'none' }}>
-                              {a.subject}
-                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', textDecoration: a.is_complete ? 'line-through' : 'none' }}>{a.subject}</div>
                             {a.description && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{a.description}</div>}
                             <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 3 }}>
                               {new Date(a.activity_date).toLocaleDateString('en-AU')}
-                              {a.due_date && ` · Due ${new Date(a.due_date).toLocaleDateString('en-AU')}`}
+                              {a.due_date         && ` · Due ${new Date(a.due_date).toLocaleDateString('en-AU')}`}
+                              {a.assigned_to_name && ` · ${a.assigned_to_name}`}
                             </div>
                             {isTask && !a.is_complete && (
-                              <button onClick={() => completeMutation.mutate(a.id)} style={{
-                                marginTop: 6, padding: '3px 8px', borderRadius: 4, fontSize: 10,
-                                fontWeight: 500, background: '#f0fdf4', color: '#16a34a',
-                                border: '1px solid #bbf7d0', cursor: 'pointer',
-                              }}>
+                              <button onClick={(e) => { e.stopPropagation(); completeMutation.mutate(a.id) }} style={{ marginTop: 6, padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 500, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', cursor: 'pointer' }}>
                                 Mark complete
                               </button>
                             )}
@@ -574,6 +464,13 @@ export default function SaleDetailPanel({ saleId, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {selectedActivity && (
+        <ActivityDetailPanel
+          activityId={selectedActivity}
+          onClose={() => { setSelectedActivity(null); refetchActivities() }}
+        />
+      )}
     </>
   )
 }

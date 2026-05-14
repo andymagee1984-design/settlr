@@ -1,3 +1,5 @@
+// src/api/activities.ts
+
 import client from './client'
 
 export interface Activity {
@@ -24,8 +26,14 @@ export const getActivities = (params?: Record<string, string>) =>
     Array.isArray(r.data) ? r.data : (r.data.results ?? [])
   )
 
+export const getActivity = (id: string) =>
+  client.get<Activity>(`/activities/${id}/`).then((r) => r.data)
+
 export const createActivity = (data: Record<string, unknown>) =>
   client.post<Activity>('/activities/', data).then((r) => r.data)
+
+export const updateActivity = (id: string, data: Record<string, unknown>) =>
+  client.patch<Activity>(`/activities/${id}/`, data).then((r) => r.data)
 
 export const completeActivity = (id: string) =>
   client.post<Activity>(`/activities/${id}/complete/`).then((r) => r.data)

@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import client from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
+import ActivityDetailPanel from '../../components/ActivityDetailPanel'
 import type { Sale } from '../../api/sales'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ interface DashboardData {
     completed_at: string | null; due_date: string | null
   }>
   my_tasks: Array<{
-    id: string; subject: string; due_date: string | null
+    id: string; activity_type: string; subject: string; due_date: string | null
     sale_id: string | null; lot_number: string | null; project_name: string | null
   }>
   this_month: { new_sales: number; fallen_over: number; settled: number; revenue_settled: string }
@@ -106,13 +107,16 @@ function timeAgo(isoString: string): string {
 }
 
 function formatDueDate(iso: string | null): { label: string; overdue: boolean } {
-  if (!iso) return { label: 'No due date', overdue: false }
+  if (!iso) return { label: '', overdue: false }
   const due = new Date(iso)
   const diffDays = Math.floor((due.getTime() - Date.now()) / 86_400_000)
-  if (diffDays < 0)  return { label: 'Overdue', overdue: true }
-  if (diffDays === 0) return { label: 'Today', overdue: true }
-  if (diffDays === 1) return { label: 'Tomorrow', overdue: false }
-  return { label: due.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }), overdue: false }
+  if (diffDays < 0)   return { label: 'Overdue',      overdue: true  }
+  if (diffDays === 0) return { label: 'Due today',    overdue: true  }
+  if (diffDays === 1) return { label: 'Due tomorrow', overdue: false }
+  return {
+    label: `Due ${due.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`,
+    overdue: false,
+  }
 }
 
 const ACTIVITY_ICON: Record<string, { icon: string; color: string; bg: string }> = {
@@ -138,7 +142,6 @@ const PIPELINE_STAGES = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ChartPeriod = 'daily' | 'weekly'
-
 interface ChartBucket { label: string; reserved: number; exchanged: number; settled: number }
 
 function buildChartData(sales: Sale[], period: ChartPeriod): ChartBucket[] {
@@ -147,21 +150,16 @@ function buildChartData(sales: Sale[], period: ChartPeriod): ChartBucket[] {
 
   if (period === 'daily') {
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(now)
-      d.setDate(d.getDate() - i)
+      const d = new Date(now); d.setDate(d.getDate() - i)
       const key = d.toISOString().slice(0, 10)
-      const label = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
-      buckets.set(key, { label, reserved: 0, exchanged: 0, settled: 0 })
+      buckets.set(key, { label: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }), reserved: 0, exchanged: 0, settled: 0 })
     }
   } else {
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(now)
-      d.setDate(d.getDate() - i * 7)
-      const day = d.getDay()
-      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1))
+      const d = new Date(now); d.setDate(d.getDate() - i * 7)
+      const day = d.getDay(); d.setDate(d.getDate() - day + (day === 0 ? -6 : 1))
       const key = d.toISOString().slice(0, 10)
-      const label = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
-      buckets.set(key, { label, reserved: 0, exchanged: 0, settled: 0 })
+      buckets.set(key, { label: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }), reserved: 0, exchanged: 0, settled: 0 })
     }
   }
 
@@ -171,8 +169,7 @@ function buildChartData(sales: Sale[], period: ChartPeriod): ChartBucket[] {
   function getBucketKey(isoDate: string): string | null {
     if (!isoDate || isoDate < earliest) return null
     if (period === 'daily') return buckets.has(isoDate.slice(0, 10)) ? isoDate.slice(0, 10) : null
-    const d = new Date(isoDate.slice(0, 10))
-    const day = d.getDay()
+    const d = new Date(isoDate.slice(0, 10)); const day = d.getDay()
     d.setDate(d.getDate() - day + (day === 0 ? -6 : 1))
     const weekKey = d.toISOString().slice(0, 10)
     return buckets.has(weekKey) ? weekKey : null
@@ -196,19 +193,12 @@ function buildChartData(sales: Sale[], period: ChartPeriod): ChartBucket[] {
   return keys.map(k => buckets.get(k)!)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Chart tooltip
-// ─────────────────────────────────────────────────────────────────────────────
-
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   const total = payload.reduce((s: number, p: any) => s + (p.value || 0), 0)
   if (total === 0) return null
   return (
-    <div style={{
-      background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8,
-      padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: 12,
-    }}>
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: 12 }}>
       <div style={{ fontWeight: 600, color: '#111827', marginBottom: 6 }}>{label}</div>
       {payload.map((p: any) => (
         <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#374151', marginBottom: 2 }}>
@@ -220,10 +210,6 @@ function ChartTooltip({ active, payload, label }: any) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sales over time chart
-// ─────────────────────────────────────────────────────────────────────────────
-
 function SalesOverTimeChart({ sales }: { sales: Sale[] }) {
   const [period, setPeriod] = useState<ChartPeriod>('weekly')
   const chartData = useMemo(() => buildChartData(sales, period), [sales, period])
@@ -233,55 +219,28 @@ function SalesOverTimeChart({ sales }: { sales: Sale[] }) {
     <div style={{ ...CARD_STYLE, padding: '16px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 500, color: '#111827' }}>
-          <TrendingUp size={15} color="#6b7280" />
-          Sales over time
+          <TrendingUp size={15} color="#6b7280" />Sales over time
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {(['daily', 'weekly'] as ChartPeriod[]).map(p => (
             <button key={p} onClick={() => setPeriod(p)} style={{
-              padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 500,
-              cursor: 'pointer', border: 'none',
+              padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: 'none',
               background: period === p ? '#111827' : '#f1f5f9',
-              color: period === p ? '#fff' : '#6b7280',
+              color:      period === p ? '#fff'    : '#6b7280',
               transition: 'all 0.15s',
-            }}>
-              {p === 'daily' ? 'Daily' : 'Weekly'}
-            </button>
+            }}>{p === 'daily' ? 'Daily' : 'Weekly'}</button>
           ))}
         </div>
       </div>
-
       {!hasData ? (
-        <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>
-          No sales data in this period.
-        </div>
+        <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>No sales data in this period.</div>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart
-            data={chartData}
-            barSize={period === 'daily' ? 8 : 18}
-            barGap={2}
-            margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
-          >
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 10, fill: '#9ca3af' }}
-              tickLine={false}
-              axisLine={false}
-              interval={period === 'daily' ? 4 : 1}
-            />
-            <YAxis
-              allowDecimals={false}
-              tick={{ fontSize: 10, fill: '#9ca3af' }}
-              tickLine={false}
-              axisLine={false}
-            />
+          <BarChart data={chartData} barSize={period === 'daily' ? 8 : 18} barGap={2} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} interval={period === 'daily' ? 4 : 1} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
             <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-            <Legend
-              iconType="square"
-              iconSize={8}
-              wrapperStyle={{ fontSize: 11, color: '#6b7280', paddingTop: 8 }}
-            />
+            <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#6b7280', paddingTop: 8 }} />
             <Bar dataKey="reserved"  name="Reserved"  fill="#85B7EB" radius={[3,3,0,0]} />
             <Bar dataKey="exchanged" name="Exchanged" fill="#185FA5" radius={[3,3,0,0]} />
             <Bar dataKey="settled"   name="Settled"   fill="#0F6E56" radius={[3,3,0,0]} />
@@ -292,34 +251,14 @@ function SalesOverTimeChart({ sales }: { sales: Sale[] }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Slide-out panel
-// ─────────────────────────────────────────────────────────────────────────────
-
-function SlidePanel({ open, onClose, title, children }: {
-  open: boolean; onClose: () => void; title: string; children: React.ReactNode
-}) {
+function SlidePanel({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   return (
     <>
-      <div onClick={onClose} style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 40,
-        opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: 'opacity 220ms ease',
-      }} />
-      <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 440,
-        background: '#fff', zIndex: 50, display: 'flex', flexDirection: 'column',
-        transform: open ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform 240ms cubic-bezier(0.4, 0, 0.2, 1)',
-        boxShadow: open ? '-8px 0 32px rgba(0,0,0,0.12)' : 'none',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: '0.5px solid #e5e7eb', flexShrink: 0,
-        }}>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 40, opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: 'opacity 220ms ease' }} />
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 440, background: '#fff', zIndex: 50, display: 'flex', flexDirection: 'column', transform: open ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 240ms cubic-bezier(0.4, 0, 0.2, 1)', boxShadow: open ? '-8px 0 32px rgba(0,0,0,0.12)' : 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '0.5px solid #e5e7eb', flexShrink: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 500, color: '#111827' }}>{title}</p>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#6b7280' }}>
-            <i className="ti ti-x" style={{ fontSize: 18 }} />
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#6b7280' }}><i className="ti ti-x" style={{ fontSize: 18 }} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>{children}</div>
       </div>
@@ -327,22 +266,9 @@ function SlidePanel({ open, onClose, title, children }: {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────────────────────
-
-function MetricCard({ label, value, sub, valueColor, icon, alert }: {
-  label: string; value: string | number; sub?: string
-  valueColor?: string; icon: React.ReactNode; alert?: boolean
-}) {
+function MetricCard({ label, value, sub, valueColor, icon, alert }: { label: string; value: string | number; sub?: string; valueColor?: string; icon: React.ReactNode; alert?: boolean }) {
   return (
-    <div style={{
-      ...CARD_STYLE,
-      padding: '14px 16px',
-      background: alert ? '#FFF7ED' : '#ffffff',
-      border: alert ? '1px solid #FED7AA' : '1px solid #e2e8f0',
-      boxShadow: alert ? '0 1px 3px rgba(251,146,60,0.12), 0 4px 12px rgba(251,146,60,0.08)' : CARD_STYLE.boxShadow,
-    }}>
+    <div style={{ ...CARD_STYLE, padding: '14px 16px', background: alert ? '#FFF7ED' : '#ffffff', border: alert ? '1px solid #FED7AA' : '1px solid #e2e8f0', boxShadow: alert ? '0 1px 3px rgba(251,146,60,0.12), 0 4px 12px rgba(251,146,60,0.08)' : CARD_STYLE.boxShadow }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <span style={{ color: '#6b7280', display: 'flex' }}>{icon}</span>
         <span style={{ fontSize: 12, color: '#6b7280' }}>{label}</span>
@@ -357,39 +283,22 @@ function SectionCard({ children, style }: { children: React.ReactNode; style?: R
   return <div style={{ ...CARD_STYLE, padding: '16px 20px', ...style }}>{children}</div>
 }
 
-function CardHeader({ title, icon, action, onAction }: {
-  title: string; icon: React.ReactNode; action?: string; onAction?: () => void
-}) {
+function CardHeader({ title, icon, action, onAction }: { title: string; icon: React.ReactNode; action?: string; onAction?: () => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 500, color: '#111827' }}>
-        <span style={{ color: '#6b7280', display: 'flex' }}>{icon}</span>
-        {title}
+        <span style={{ color: '#6b7280', display: 'flex' }}>{icon}</span>{title}
       </div>
-      {action && (
-        <button onClick={onAction} style={{
-          background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 3, padding: 0,
-        }}>
-          {action} <ArrowRight size={11} />
-        </button>
-      )}
+      {action && <button onClick={onAction} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>{action} <ArrowRight size={11} /></button>}
     </div>
   )
 }
 
-function Divider() {
-  return <div style={{ height: '0.5px', background: '#f3f4f6', margin: '0 -20px' }} />
-}
+function Divider() { return <div style={{ height: '0.5px', background: '#f3f4f6', margin: '0 -20px' }} /> }
 
 function Initials({ text, size = 28 }: { text: string; size?: number }) {
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: '#EFF6FF', color: '#1D4ED8',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.4, fontWeight: 500, flexShrink: 0,
-    }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: '#EFF6FF', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.4, fontWeight: 500, flexShrink: 0 }}>
       {text}
     </div>
   )
@@ -405,7 +314,8 @@ export default function DashboardPage() {
   const { data, isLoading, isError } = useDashboard()
   const { data: sales = [] } = useSales()
 
-  const [panel, setPanel] = useState<null | 'pipeline' | 'activities' | 'tasks'>(null)
+  const [panel,            setPanel]            = useState<null | 'pipeline' | 'activities' | 'tasks'>(null)
+  const [selectedActivity, setSelectedActivity] = useState<string | null>(null)
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
@@ -435,26 +345,14 @@ export default function DashboardPage() {
     <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
 
       {/* Header */}
-      <div style={{
-        background: '#fff', borderBottom: '1px solid #e2e8f0',
-        padding: '20px 24px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-      }}>
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '20px 24px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
-            <h1 style={{ fontSize: 18, fontWeight: 500, color: '#111827' }}>
-              {greeting}, {user?.first_name}
-            </h1>
-            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>
-              Here's what's happening across your portfolio
-            </p>
+            <h1 style={{ fontSize: 18, fontWeight: 500, color: '#111827' }}>{greeting}, {user?.first_name}</h1>
+            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>Here's what's happening across your portfolio</p>
           </div>
-          <div style={{
-            fontSize: 12, color: '#6b7280', background: '#f8fafc',
-            border: '1px solid #e2e8f0', borderRadius: 8,
-            padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            <Clock size={13} />
-            {today}
+          <div style={{ fontSize: 12, color: '#6b7280', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Clock size={13} />{today}
           </div>
         </div>
       </div>
@@ -463,33 +361,13 @@ export default function DashboardPage() {
 
         {/* Metric cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 10 }}>
-          <MetricCard
-            label="Lots on market" value={m.on_market}
-            sub={`of ${m.total_lots} total · ${m.settled_lots} settled`}
-            icon={<Building2 size={14} />}
-          />
-          <MetricCard
-            label="Active sales" value={m.active_sales}
-            sub={`${data.pending_approvals.length} pending approval`}
-            valueColor={m.active_sales > 0 ? '#B45309' : '#111827'}
-            icon={<FileText size={14} />}
-          />
-          <MetricCard
-            label="New this month" value={`+${data.this_month.new_sales}`}
-            sub={`${data.this_month.fallen_over} fallen over`}
-            valueColor="#0F6E56"
-            icon={<TrendingUp size={14} />}
-          />
-          <MetricCard
-            label="On hold expiring" value={m.expiring_soon}
-            sub="within 4 hours"
-            valueColor={m.expiring_soon > 0 ? '#B91C1C' : '#111827'}
-            alert={m.expiring_soon > 0}
-            icon={<Clock size={14} />}
-          />
+          <MetricCard label="Lots on market"   value={m.on_market}          sub={`of ${m.total_lots} total · ${m.settled_lots} settled`}       icon={<Building2 size={14} />} />
+          <MetricCard label="Active sales"     value={m.active_sales}       sub={`${data.pending_approvals.length} pending approval`}            valueColor={m.active_sales > 0 ? '#B45309' : '#111827'} icon={<FileText size={14} />} />
+          <MetricCard label="New this month"   value={`+${data.this_month.new_sales}`} sub={`${data.this_month.fallen_over} fallen over`}        valueColor="#0F6E56" icon={<TrendingUp size={14} />} />
+          <MetricCard label="On hold expiring" value={m.expiring_soon}      sub="within 4 hours"                                                 valueColor={m.expiring_soon > 0 ? '#B91C1C' : '#111827'} alert={m.expiring_soon > 0} icon={<Clock size={14} />} />
         </div>
 
-        {/* ── Sales over time chart ── */}
+        {/* Sales over time chart */}
         <SalesOverTimeChart sales={sales} />
 
         {/* Main two-column */}
@@ -497,62 +375,32 @@ export default function DashboardPage() {
 
           {/* Pipeline + Pending approvals */}
           <SectionCard>
-            <CardHeader
-              title="Sales pipeline" icon={<Activity size={15} />}
-              action="View all" onAction={() => navigate('/sales')}
-            />
+            <CardHeader title="Sales pipeline" icon={<Activity size={15} />} action="View all" onAction={() => navigate('/sales')} />
             {totalPipeline > 0 ? (
               <>
                 <div style={{ display: 'flex', gap: 3, height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
-                  {PIPELINE_STAGES.map(({ key, color }) => {
-                    const count = data.pipeline[key] ?? 0
-                    return count > 0 ? <div key={key} style={{ flex: count, background: color, minWidth: 4 }} /> : null
-                  })}
+                  {PIPELINE_STAGES.map(({ key, color }) => { const count = data.pipeline[key] ?? 0; return count > 0 ? <div key={key} style={{ flex: count, background: color, minWidth: 4 }} /> : null })}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', marginBottom: 14 }}>
-                  {PIPELINE_STAGES.map(({ key, label, color }) => {
-                    const count = data.pipeline[key] ?? 0
-                    return count > 0 ? (
-                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                        {label} ({count})
-                      </div>
-                    ) : null
-                  })}
+                  {PIPELINE_STAGES.map(({ key, label, color }) => { const count = data.pipeline[key] ?? 0; return count > 0 ? <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />{label} ({count})</div> : null })}
                 </div>
               </>
             ) : (
               <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 14 }}>No active sales.</p>
             )}
-
             {data.pending_approvals.length > 0 && (
               <>
                 <Divider />
                 <div style={{ marginTop: 12 }}>
-                  <p style={{ fontSize: 11, fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                    Pending approval
-                  </p>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Pending approval</p>
                   {data.pending_approvals.map(sale => (
                     <div key={sale.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '0.5px solid #f3f4f6' }}>
                       <Initials text={sale.buyer_initials} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 12, fontWeight: 500, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {sale.buyer_name}
-                        </p>
-                        <p style={{ fontSize: 11, color: '#6b7280' }}>
-                          Lot {sale.lot_number} · {formatPrice(sale.sale_price)} · {sale.project_name}
-                        </p>
+                        <p style={{ fontSize: 12, fontWeight: 500, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sale.buyer_name}</p>
+                        <p style={{ fontSize: 11, color: '#6b7280' }}>Lot {sale.lot_number} · {formatPrice(sale.sale_price)} · {sale.project_name}</p>
                       </div>
-                      <button
-                        onClick={() => navigate(`/sales?highlight=${sale.id}`)}
-                        style={{
-                          fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 6,
-                          background: '#EAF3DE', color: '#3B6D11', border: '0.5px solid #C0DD97',
-                          cursor: 'pointer', whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Review
-                      </button>
+                      <button onClick={() => navigate(`/sales?highlight=${sale.id}`)} style={{ fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 6, background: '#EAF3DE', color: '#3B6D11', border: '0.5px solid #C0DD97', cursor: 'pointer', whiteSpace: 'nowrap' }}>Review</button>
                     </div>
                   ))}
                 </div>
@@ -562,36 +410,25 @@ export default function DashboardPage() {
 
           {/* Recent activity */}
           <SectionCard>
-            <CardHeader
-              title="Recent activity" icon={<Activity size={15} />}
-              action="View all" onAction={() => navigate('/activities')}
-            />
+            <CardHeader title="Recent activity" icon={<Activity size={15} />} action="View all" onAction={() => navigate('/activities')} />
             {data.recent_activities.length === 0 ? (
               <p style={{ fontSize: 12, color: '#9ca3af' }}>No recent activity.</p>
             ) : (
               data.recent_activities.map((a, i) => {
                 const actStyle = ACTIVITY_ICON[a.activity_type] ?? ACTIVITY_ICON.note
                 return (
-                  <div key={a.id} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0',
+                  <div key={a.id} onClick={() => setSelectedActivity(a.id)} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: 'pointer',
                     borderBottom: i < data.recent_activities.length - 1 ? '0.5px solid #f3f4f6' : 'none',
                   }}>
-                    <div style={{
-                      width: 28, height: 28, borderRadius: '50%',
-                      background: actStyle.bg, color: actStyle.color,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: actStyle.bg, color: actStyle.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <i className={`ti ${actStyle.icon}`} style={{ fontSize: 13 }} aria-hidden="true" />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 12, fontWeight: 500, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {a.subject}
-                      </p>
+                      <p style={{ fontSize: 12, fontWeight: 500, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.subject}</p>
                       {a.assigned_to_name && <p style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{a.assigned_to_name}</p>}
                     </div>
-                    <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {timeAgo(a.created_at)}
-                    </span>
+                    <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap', flexShrink: 0 }}>{timeAgo(a.created_at)}</span>
                   </div>
                 )
               })
@@ -609,13 +446,8 @@ export default function DashboardPage() {
               <p style={{ fontSize: 12, color: '#9ca3af' }}>No active projects.</p>
             ) : (
               data.projects.map((p, i) => (
-                <div key={p.id} onClick={() => navigate(`/projects/${p.id}`)} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer',
-                  borderBottom: i < data.projects.length - 1 ? '0.5px solid #f3f4f6' : 'none',
-                }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Building2 size={16} color="#9ca3af" />
-                  </div>
+                <div key={p.id} onClick={() => navigate(`/projects/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer', borderBottom: i < data.projects.length - 1 ? '0.5px solid #f3f4f6' : 'none' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Building2 size={16} color="#9ca3af" /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 12, fontWeight: 500, color: '#111827' }}>{p.name}</p>
                     <p style={{ fontSize: 11, color: '#6b7280' }}>{p.total_lots} lots · {p.stage_count} stage{p.stage_count !== 1 ? 's' : ''}</p>
@@ -629,26 +461,33 @@ export default function DashboardPage() {
             )}
           </SectionCard>
 
-          {/* My tasks */}
+          {/* My open activities */}
           <SectionCard>
             <CardHeader
-              title="My tasks" icon={<CheckSquare size={15} />}
+              title="My open activities"
+              icon={<CheckSquare size={15} />}
               action={data.my_tasks.length > 0 ? `${data.my_tasks.length} open` : undefined}
               onAction={() => navigate('/activities')}
             />
             {data.my_tasks.length === 0 ? (
-              <p style={{ fontSize: 12, color: '#9ca3af' }}>No open tasks.</p>
+              <p style={{ fontSize: 12, color: '#9ca3af' }}>No open activities.</p>
             ) : (
               data.my_tasks.map((t, i) => {
-                const { label, overdue } = formatDueDate(t.due_date)
+                const { label: dueLabel, overdue } = formatDueDate(t.due_date)
+                const actStyle = ACTIVITY_ICON[t.activity_type] ?? ACTIVITY_ICON.note
                 return (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: i < data.my_tasks.length - 1 ? '0.5px solid #f3f4f6' : 'none' }}>
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #d1d5db', flexShrink: 0 }} />
+                  <div key={t.id} onClick={() => setSelectedActivity(t.id)} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: 'pointer',
+                    borderBottom: i < data.my_tasks.length - 1 ? '0.5px solid #f3f4f6' : 'none',
+                  }}>
+                    <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: actStyle.bg, color: actStyle.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <i className={`ti ${actStyle.icon}`} style={{ fontSize: 12 }} />
+                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.subject}</p>
                       {t.lot_number && <p style={{ fontSize: 11, color: '#9ca3af' }}>Lot {t.lot_number} · {t.project_name}</p>}
+                      {dueLabel && <p style={{ fontSize: 11, color: overdue ? '#B91C1C' : '#6b7280', marginTop: 1 }}>{dueLabel}</p>}
                     </div>
-                    <span style={{ fontSize: 11, color: overdue ? '#B91C1C' : '#9ca3af', whiteSpace: 'nowrap', flexShrink: 0 }}>{label}</span>
                   </div>
                 )
               })
@@ -665,10 +504,7 @@ export default function DashboardPage() {
                 { label: 'Settled',         value: data.this_month.settled,                      color: '#111827' },
                 { label: 'Revenue settled', value: formatPrice(data.this_month.revenue_settled), color: '#185FA5' },
               ].map(({ label, value, color }) => (
-                <div key={label} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #f1f5f9',
-                }}>
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #f1f5f9' }}>
                   <span style={{ fontSize: 12, color: '#6b7280' }}>{label}</span>
                   <span style={{ fontSize: 15, fontWeight: 500, color }}>{value}</span>
                 </div>
@@ -681,6 +517,14 @@ export default function DashboardPage() {
       <SlidePanel open={panel !== null} onClose={() => setPanel(null)} title="Details">
         <p style={{ fontSize: 13, color: '#6b7280' }}>Detail view coming soon.</p>
       </SlidePanel>
+
+      {/* Activity detail panel */}
+      {selectedActivity && (
+        <ActivityDetailPanel
+          activityId={selectedActivity}
+          onClose={() => setSelectedActivity(null)}
+        />
+      )}
     </div>
   )
 }

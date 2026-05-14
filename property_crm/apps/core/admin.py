@@ -26,6 +26,10 @@ class OrganisationAdmin(admin.ModelAdmin):
         ("Billing", {
             "fields": ["billing_status"],
         }),
+        ("Notifications", {
+            "fields": ["notification_emails"],
+            "description": "Comma-separated email addresses that receive a copy of every sales advice (e.g. developer@example.com,accounts@example.com).",
+        }),
         ("Timestamps", {
             "fields": ["created_at", "updated_at"],
             "classes": ["collapse"],

@@ -53,6 +53,7 @@ class Project(OrgScopedModel):
     billing_start_date = models.DateField(null=True, blank=True)
     billing_end_date   = models.DateField(null=True, blank=True)
     billing_status     = models.CharField(max_length=20, choices=BillingStatus.choices, default=BillingStatus.ACTIVE)
+    amenities = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["name"]
@@ -118,7 +119,7 @@ class ProjectMedia(TimeStampedModel):
     project     = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="media")
     media_type  = models.CharField(max_length=20, choices=MediaType.choices)
     category    = models.CharField(max_length=20, choices=Category.choices)
-    title       = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, blank=True)
     file        = models.FileField(upload_to="project_media/")
     sort_order  = models.PositiveIntegerField(default=0)
     uploaded_by = models.ForeignKey(
@@ -342,3 +343,111 @@ class LotPriceHistory(TimeStampedModel):
 
     def __str__(self):
         return f"{self.lot} — ${self.price} from {self.effective_date}"
+    """
+ADD TO: apps/projects/models.py
+
+Add these two models after the LotPriceHistory model.
+Then run: python manage.py makemigrations projects
+"""
+
+import uuid
+from django.db import models
+
+
+class ProjectAgency(models.Model):
+    """
+    Grants an Agency access to sell lots within a Project.
+    Managed by the developer via the Project detail page (Agencies tab).
+
+    An agency with project-level access can see and sell any lot in the project
+    that does not have a LotAgency exclusive assignment to a different agency.
+
+    Constraints:
+    - Unique on (project, agency) — an agency can only be assigned once per project
+    - Cannot be deleted if the agency has active sales on this project
+    """
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project      = models.ForeignKey(
+        "projects.Project",
+        on_delete=models.CASCADE,
+        related_name="project_agencies",
+    )
+    agency       = models.ForeignKey(
+        "contacts.Agency",
+        on_delete=models.CASCADE,
+        related_name="project_agencies",
+    )
+    assigned_by  = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="+",
+    )
+    assigned_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "agency"],
+                name="unique_agency_per_project",
+            )
+        ]
+        ordering = ["assigned_at"]
+        verbose_name = "Project agency"
+        verbose_name_plural = "Project agencies"
+
+    def __str__(self):
+        return f"{self.agency.name} → {self.project.name}"
+
+
+class LotAgency(models.Model):
+    """
+    Exclusively assigns a Lot to one Agency.
+
+    When set, ALL other agencies lose visibility of this lot immediately,
+    regardless of their ProjectAgency access. The lot simply does not appear
+    in their view — it is not shown as unavailable, it is absent entirely.
+
+    Constraints:
+    - Unique on lot — only one exclusive agency per lot at any time
+    - The assigned agency must have ProjectAgency access for the lot's project
+    - Cannot be created if the lot has an active sale by a different agency
+      (system blocks assignment — developer must resolve the sale first)
+
+    Lot visibility logic for agency users:
+        Show lot if:
+            1. LotAgency exists for this lot AND agency == this agency
+            OR
+            2. No LotAgency exists for this lot AND ProjectAgency exists for this agency+project
+
+        Hide lot if:
+            - LotAgency exists for this lot AND agency != this agency
+    """
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lot         = models.OneToOneField(
+        "projects.Lot",
+        on_delete=models.CASCADE,
+        related_name="lot_agency",
+    )
+    agency      = models.ForeignKey(
+        "contacts.Agency",
+        on_delete=models.CASCADE,
+        related_name="exclusive_lots",
+    )
+    assigned_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="+",
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["assigned_at"]
+        verbose_name = "Lot agency (exclusive)"
+        verbose_name_plural = "Lot agencies (exclusive)"
+
+    def __str__(self):
+        return f"{self.lot} exclusively assigned to {self.agency.name}"

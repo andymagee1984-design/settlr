@@ -49,7 +49,7 @@ def calculate_on_hold_expiry(created_at: datetime) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# Workflow 02 — Create Sale (On Hold)
+# Workflow 01 — Create Sale (On Hold)
 # ---------------------------------------------------------------------------
 
 @transaction.atomic
@@ -102,7 +102,7 @@ def submit_for_approval(sale: Sale, deposit_data: dict, user) -> Sale:
     """
     Validates that all minimum requirements are met then moves sale to Pending.
     deposit_data: dict with amount, deposit_type, deposit_date, deposit_time, attachment.
-    Sends notification to Sales Manager / Admin users (stub — notifications app to implement).
+    Notifies all Sales Manager / Admin users in the organisation.
     """
     _validate_submission_requirements(sale)
 
@@ -119,14 +119,21 @@ def submit_for_approval(sale: Sale, deposit_data: dict, user) -> Sale:
     sale.status = Sale.Status.PENDING
     sale.save(update_fields=["status", "updated_at"])
 
-    # TODO: send notification to all Sales Manager / Admin users in organisation
-    # notify_pending_sale(sale)
+    # Notify Sales Managers / Admins
+    try:
+        from apps.notifications.notify import notify_pending_sale
+        notify_pending_sale(sale)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(
+            f"submit_for_approval: notification failed for sale {sale.pk}: {e}"
+        )
 
     return sale
 
 
 def _validate_submission_requirements(sale: Sale):
-    """Raises ValueError if minimum fields are missing before submission."""
+    """Raises ValidationError if minimum fields are missing before submission."""
     from rest_framework.exceptions import ValidationError
 
     errors = {}
@@ -174,8 +181,25 @@ def approve_sale(sale: Sale, approved_by) -> Sale:
     sale.approved_at = now
     sale.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
 
-    # TODO: notify agent of approval
-    # notify_sale_approved(sale)
+    # Send sales advice email
+    try:
+        from apps.notifications.email import send_sales_advice
+        send_sales_advice(sale)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(
+            f"approve_sale: sales advice failed for sale {sale.pk}: {e}"
+        )
+
+    # Notify the agent / sale creator
+    try:
+        from apps.notifications.notify import notify_sale_approved
+        notify_sale_approved(sale)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(
+            f"approve_sale: notification failed for sale {sale.pk}: {e}"
+        )
 
     return sale
 
@@ -193,8 +217,15 @@ def decline_sale(sale: Sale, reason: str, declined_by) -> Sale:
     sale.status = Sale.Status.DECLINED
     sale.save(update_fields=["status", "updated_at"])
 
-    # TODO: notify agent of decline with reason
-    # notify_sale_declined(sale, reason)
+    # Notify the agent / sale creator with the decline reason
+    try:
+        from apps.notifications.notify import notify_sale_declined
+        notify_sale_declined(sale, reason)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(
+            f"decline_sale: notification failed for sale {sale.pk}: {e}"
+        )
 
     return sale
 
@@ -342,8 +373,15 @@ def fall_over_sale(sale: Sale, reason: str, fallen_by) -> Sale:
     sale.fallen_over_reason = reason
     sale.save(update_fields=["status", "fallen_over_at", "fallen_over_reason", "updated_at"])
 
-    # TODO: notify agent
-    # notify_sale_fallen_over(sale)
+    # Notify the agent / sale creator
+    try:
+        from apps.notifications.notify import notify_sale_fallen_over
+        notify_sale_fallen_over(sale)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(
+            f"fall_over_sale: notification failed for sale {sale.pk}: {e}"
+        )
 
     return sale
 
@@ -367,5 +405,4 @@ def auto_fall_over_expired_on_hold():
     for sale in expired:
         fall_over_sale(sale, reason=Sale.FallenOverReason.TUBED_BUYER, fallen_by=None)
         fallen.append(sale)
-        # TODO: send email to sale.created_by
     return fallen

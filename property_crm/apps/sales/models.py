@@ -119,6 +119,14 @@ class Sale(OrgScopedModel):
     settlement_date       = models.DateField(null=True, blank=True)
     settlement_statement  = models.FileField(upload_to="sale_documents/settlement/", null=True, blank=True)
 
+    # Auto-generated sales advice PDF — created and saved when sale is approved
+    sales_advice_document = models.FileField(
+        upload_to="sale_documents/sales_advice/",
+        null=True,
+        blank=True,
+        help_text="Auto-generated sales advice PDF, created on approval.",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         indexes  = [models.Index(fields=["organisation", "id"])]
