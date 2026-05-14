@@ -6,6 +6,7 @@ Every other app imports from here.
 """
 
 import uuid
+import secrets
 from django.db import models
 
 
@@ -88,6 +89,17 @@ class Organisation(TimeStampedModel):
     cooling_off_days        = models.PositiveIntegerField(default=5)
     holding_deposit_default = models.DecimalField(max_digits=10, decimal_places=2, default=1000)
     billing_status          = models.CharField(max_length=20, choices=BillingStatus.choices, default=BillingStatus.ACTIVE)
+
+    # Portal webhook authentication token — used to identify the tenant
+    # on incoming leads from Domain / REA portal webhooks.
+    # Endpoint: POST /api/v1/webhooks/portal/{org_token}/
+    # Regenerate via Django Admin if compromised.
+    org_token               = models.CharField(
+        max_length=64,
+        unique=True,
+        default=secrets.token_urlsafe,
+        help_text="Token for portal webhook authentication (Domain / REA lead ingestion).",
+    )
 
     # Sales advice notifications — comma-separated list of email addresses
     # that receive a copy of every sales advice generated for this organisation.
