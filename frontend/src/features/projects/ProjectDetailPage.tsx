@@ -1204,11 +1204,13 @@ function DACard({ da, canManage, projectId, stages, onUpdated }: {
     onSuccess: () => onUpdated(),
   })
 
+  const conditions = da.conditions ?? []
+  const milestones = da.milestones ?? []
   const filteredConditions = condFilter
-    ? da.conditions.filter(c => c.status === condFilter)
-    : da.conditions
+    ? conditions.filter(c => c.status === condFilter)
+    : conditions
 
-  const openCount = da.conditions.filter(c => !['complete', 'waived'].includes(c.status)).length
+  const openCount = conditions.filter(c => !['complete', 'waived'].includes(c.status)).length
 
   return (
     <div style={{ ...CARD, overflow: 'hidden' }}>
@@ -1240,7 +1242,7 @@ function DACard({ da, canManage, projectId, stages, onUpdated }: {
           </div>
           <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
             <span style={{ fontSize: 11, color: '#a89e98' }}>{openCount} open condition{openCount !== 1 ? 's' : ''}</span>
-            <span style={{ fontSize: 11, color: '#a89e98' }}>{da.milestones.length} milestone{da.milestones.length !== 1 ? 's' : ''}</span>
+            <span style={{ fontSize: 11, color: '#a89e98' }}>{milestones.length} milestone{milestones.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -1342,11 +1344,11 @@ function DACard({ da, canManage, projectId, stages, onUpdated }: {
               </div>
             )}
 
-            {da.milestones.length === 0 ? (
+            {milestones.length === 0 ? (
               <p style={{ fontSize: 12, color: '#a89e98', fontStyle: 'italic' }}>No milestones added.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {da.milestones.map(m => (
+                {milestones.map(m => (
                   <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #f0ebe6' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: m.actual_date ? '#52a96e' : m.is_overdue ? '#c0533a' : '#d4ccc5' }} />
                     <div style={{ flex: 1 }}>

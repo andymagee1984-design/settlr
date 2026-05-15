@@ -585,8 +585,8 @@ class DevelopmentApplicationViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy"):
-            return [HasPermission("da.manage")]
-        return [HasPermission("report.view")]
+            return [HasPermission("da.manage")()]
+        return [HasPermission("report.view")()]
 
     def perform_create(self, serializer):
         serializer.save()
@@ -618,8 +618,8 @@ class DAConditionViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy"):
-            return [HasPermission("da.manage")]
-        return [HasPermission("report.view")]
+            return [HasPermission("da.manage")()]
+        return [HasPermission("report.view")()]
 
 
 class DAMilestoneViewSet(viewsets.ModelViewSet):
@@ -644,5 +644,5 @@ class DAMilestoneViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy"):
-            return [HasPermission("da.manage")]
-        return [HasPermission("report.view")]
+            return [HasPermission("da.manage")()]
+        return [HasPermission("report.view")()]
