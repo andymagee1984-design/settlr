@@ -1,9 +1,5 @@
 """
 apps/contacts/serializers.py
-
-Replace the full file with this version — adds ProspectSerializer,
-ProspectCreateSerializer, and BuyerSerializer updates alongside
-all existing serializers.
 """
 
 from rest_framework import serializers
@@ -11,8 +7,8 @@ from .models import Buyer, Agency, Agent, Solicitor, Referrer, Prospect, Enquiry
 
 
 class BuyerSerializer(serializers.ModelSerializer):
-    display_name    = serializers.CharField(read_only=True)
-    is_converted    = serializers.BooleanField(read_only=True)
+    display_name     = serializers.CharField(read_only=True)
+    is_converted     = serializers.BooleanField(read_only=True)
     purchase_history = serializers.SerializerMethodField()
 
     class Meta:
@@ -31,10 +27,6 @@ class BuyerSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "converted_at", "created_at", "is_return_buyer"]
 
     def get_purchase_history(self, obj):
-        """
-        Returns all sales where this buyer is primary or secondary purchaser.
-        Lightweight — only the fields needed for the buyer record summary.
-        """
         from django.db.models import Q
         try:
             from apps.sales.models import Sale
@@ -43,9 +35,7 @@ class BuyerSerializer(serializers.ModelSerializer):
 
         sales = Sale.objects.filter(
             Q(primary_buyer=obj) | Q(secondary_buyer=obj)
-        ).select_related(
-            "lot__stage__project"
-        ).order_by("-created_at")
+        ).select_related("lot__stage__project").order_by("-created_at")
 
         result = []
         for sale in sales:
@@ -129,11 +119,11 @@ class ProspectSerializer(serializers.ModelSerializer):
     Full prospect serializer — used for list and detail views.
     Includes derived fields: full_name, engagement_level, returning buyer summary.
     """
-    full_name        = serializers.CharField(read_only=True)
-    engagement_level = serializers.CharField(read_only=True)
-    assigned_to_name = serializers.SerializerMethodField()
-    project_name     = serializers.SerializerMethodField()
-    lot_number       = serializers.SerializerMethodField()
+    full_name               = serializers.CharField(read_only=True)
+    engagement_level        = serializers.CharField(read_only=True)
+    assigned_to_name        = serializers.SerializerMethodField()
+    project_name            = serializers.SerializerMethodField()
+    lot_number              = serializers.SerializerMethodField()
     returning_buyer_summary = serializers.SerializerMethodField()
 
     class Meta:
@@ -144,6 +134,8 @@ class ProspectSerializer(serializers.ModelSerializer):
             "project", "project_name", "lot", "lot_number",
             "assigned_to", "assigned_to_name",
             "notes",
+            "budget_min", "budget_max",
+            "purchase_intent",
             "is_returning_buyer", "buyer", "returning_buyer_summary",
             "engagement_level",
             "converted_at", "created_at",
@@ -165,13 +157,8 @@ class ProspectSerializer(serializers.ModelSerializer):
         return obj.lot.lot_number if obj.lot else None
 
     def get_returning_buyer_summary(self, obj):
-        """
-        If this is a returning buyer, return a brief purchase summary
-        to display as a flag on the prospect record.
-        """
         if not obj.is_returning_buyer or not obj.buyer:
             return None
-
         try:
             from django.db.models import Q
             from apps.sales.models import Sale
@@ -196,7 +183,6 @@ class ProspectSerializer(serializers.ModelSerializer):
         organisation = self.context["request"].user.organisation
         validated_data["organisation"] = organisation
 
-        # Run returning buyer match before saving
         matched_buyer = Prospect.match_returning_buyer(
             organisation=organisation,
             email=validated_data.get("email", ""),
