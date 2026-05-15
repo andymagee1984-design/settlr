@@ -1,4 +1,7 @@
 // src/components/ActivityDetailPanel.tsx
+//
+// Slide-out panel for viewing and editing any activity.
+// Opens when any activity row is clicked — Activities page, Sale panel, Dashboard.
 
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -6,6 +9,7 @@ import { getActivity, updateActivity, completeActivity } from '../api/activities
 import type { Activity } from '../api/activities'
 import client from '../api/client'
 
+// ── Re-use the same OrgUser type from LogActivityForm ────────────────────────
 interface OrgUser {
   id: string
   full_name: string
@@ -17,46 +21,48 @@ async function fetchOrgUsers(): Promise<OrgUser[]> {
   return Array.isArray(data) ? data : (data as any).results ?? []
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface Props {
   activityId: string
   onClose:    () => void
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string }> = {
-  call:       { label: 'Call',       icon: 'ti-phone',       color: '#2649a0', bg: '#eef2fb' },
-  email:      { label: 'Email',      icon: 'ti-mail',        color: '#5b2d8a', bg: '#f5f0fb' },
-  meeting:    { label: 'Meeting',    icon: 'ti-calendar',    color: '#9a5f00', bg: '#fef6ec' },
-  inspection: { label: 'Inspection', icon: 'ti-home-search', color: '#1a5c2e', bg: '#eef7f0' },
-  task:       { label: 'Task',       icon: 'ti-checkbox',    color: '#3d4a5c', bg: '#f2f0ee' },
-  note:       { label: 'Note',       icon: 'ti-notes',       color: '#7a6e68', bg: '#f2f0ee' },
+  call:       { label: 'Call',       icon: 'ti-phone',       color: '#185FA5', bg: '#E6F1FB' },
+  email:      { label: 'Email',      icon: 'ti-mail',        color: '#534AB7', bg: '#EEEDFE' },
+  meeting:    { label: 'Meeting',    icon: 'ti-calendar',    color: '#185FA5', bg: '#E6F1FB' },
+  inspection: { label: 'Inspection', icon: 'ti-home-search', color: '#0F6E56', bg: '#E1F5EE' },
+  task:       { label: 'Task',       icon: 'ti-checkbox',    color: '#BA7517', bg: '#FAEEDA' },
+  note:       { label: 'Note',       icon: 'ti-notes',       color: '#5F5E5A', bg: '#F1EFE8' },
 }
 
 const TYPE_OPTIONS = ['call', 'email', 'meeting', 'inspection', 'task', 'note']
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 6,
-  border: '1px solid #d4ccc5', fontSize: 13, color: '#2c2420',
-  boxSizing: 'border-box', background: '#fff', outline: 'none',
+  border: '1px solid #d1d5db', fontSize: 13, color: '#111827',
+  boxSizing: 'border-box', background: '#fff',
 }
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 11, color: '#7a6e68', marginBottom: 4, display: 'block',
+  fontSize: 11, color: '#9ca3af', marginBottom: 4, display: 'block',
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
       <div style={labelStyle}>{label}</div>
-      <div style={{ fontSize: 13, color: '#2c2420', fontWeight: 500 }}>{value || '—'}</div>
+      <div style={{ fontSize: 13, color: '#111827', fontWeight: 500 }}>{value || '—'}</div>
     </div>
   )
 }
 
 export default function ActivityDetailPanel({ activityId, onClose }: Props) {
-  const [visible, setVisible] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
-  const [form,    setForm]    = useState({
+  const [visible,  setVisible]  = useState(false)
+  const [editing,  setEditing]  = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [form,     setForm]     = useState({
     activity_type: '',
     subject:       '',
     description:   '',
@@ -78,17 +84,17 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
   }
 
   const { data: activity, isLoading } = useQuery<Activity>({
-    queryKey:  ['activity', activityId],
-    queryFn:   () => getActivity(activityId),
-    staleTime: 30_000,
+    queryKey: ['activity', activityId],
+    queryFn:  () => getActivity(activityId),
   })
 
   const { data: users = [] } = useQuery<OrgUser[]>({
     queryKey:  ['org-users'],
     queryFn:   fetchOrgUsers,
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   })
 
+  // Populate form when activity loads
   useEffect(() => {
     if (activity) {
       setForm({
@@ -137,7 +143,7 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
     <>
       {/* Backdrop */}
       <div onClick={handleClose} style={{
-        position: 'fixed', inset: 0, background: 'rgba(44,36,32,0.3)', zIndex: 900,
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 900,
         opacity: visible ? 1 : 0, transition: 'opacity 240ms ease',
       }} />
 
@@ -146,14 +152,14 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 480,
         background: '#fff', zIndex: 901,
         display: 'flex', flexDirection: 'column',
-        boxShadow: '-8px 0 40px rgba(44,36,32,0.10)',
+        boxShadow: '-8px 0 40px rgba(0,0,0,0.12)',
         transform: visible ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 240ms cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
 
         {/* Header */}
         <div style={{
-          padding: '20px 24px', borderBottom: '1px solid #f0ebe6',
+          padding: '20px 24px', borderBottom: '1px solid #f3f4f6',
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
           flexShrink: 0,
         }}>
@@ -166,16 +172,16 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
               <i className={`ti ${tc.icon}`} style={{ fontSize: 16 }} />
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#2c2420' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
                 {activity?.subject ?? '…'}
               </div>
-              <div style={{ fontSize: 12, color: '#7a6e68', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                 {tc.label}
                 {activity?.is_complete && (
                   <span style={{
                     marginLeft: 8, fontSize: 11, fontWeight: 500,
-                    color: '#1a5c2e', background: '#eef7f0',
-                    border: '1px solid #b8dfc3', borderRadius: 99, padding: '1px 7px',
+                    color: '#15803d', background: '#f0fdf4',
+                    border: '1px solid #bbf7d0', borderRadius: 99, padding: '1px 7px',
                   }}>
                     Completed
                   </span>
@@ -183,7 +189,7 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
               </div>
             </div>
           </div>
-          <button onClick={handleClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a89e98', fontSize: 20, padding: 0 }}>
+          <button onClick={handleClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 20, padding: 0 }}>
             <i className="ti ti-x" />
           </button>
         </div>
@@ -191,10 +197,11 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           {isLoading ? (
-            <div style={{ color: '#a89e98', fontSize: 14 }}>Loading…</div>
+            <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</div>
           ) : activity ? (
             <>
               {!editing ? (
+                /* ── View mode ── */
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                     <Field label="Type"        value={tc.label} />
@@ -213,32 +220,32 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
                     <div style={{ marginBottom: 20 }}>
                       <div style={labelStyle}>Notes</div>
                       <div style={{
-                        fontSize: 13, color: '#2c2420', lineHeight: 1.6,
-                        background: '#f9f6f4', borderRadius: 8, padding: '12px 14px',
-                        border: '1px solid #e8e2dd',
+                        fontSize: 13, color: '#374151', lineHeight: 1.6,
+                        background: '#f9fafb', borderRadius: 8, padding: '12px 14px',
+                        border: '1px solid #e5e7eb',
                       }}>
                         {activity.description}
                       </div>
                     </div>
                   )}
 
-                  {error && <div style={{ fontSize: 12, color: '#882010', marginBottom: 12 }}>{error}</div>}
+                  {error && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 12 }}>{error}</div>}
 
+                  {/* Actions */}
                   {!activity.is_complete && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button onClick={() => setEditing(true)} style={{
                         padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-                        background: '#f2f0ee', color: '#2c2420', border: '1px solid #e8e2dd', cursor: 'pointer',
-                        fontFamily: 'var(--font-body)',
+                        background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
                       }}>
                         <i className="ti ti-pencil" style={{ marginRight: 5 }} />Edit
                       </button>
                       {activity.activity_type === 'task' && (
                         <button onClick={() => markComplete()} disabled={completing} style={{
                           padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-                          background: '#eef7f0', color: '#1a5c2e',
-                          border: '1px solid #b8dfc3', cursor: 'pointer',
-                          opacity: completing ? 0.6 : 1, fontFamily: 'var(--font-body)',
+                          background: '#f0fdf4', color: '#16a34a',
+                          border: '1px solid #bbf7d0', cursor: 'pointer',
+                          opacity: completing ? 0.6 : 1,
                         }}>
                           <i className="ti ti-check" style={{ marginRight: 5 }} />
                           {completing ? 'Saving…' : 'Mark complete'}
@@ -248,6 +255,7 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
                   )}
                 </>
               ) : (
+                /* ── Edit mode ── */
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
@@ -297,7 +305,7 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
                       onChange={e => setForm({ ...form, description: e.target.value })} />
                   </div>
 
-                  {error && <div style={{ fontSize: 12, color: '#882010' }}>{error}</div>}
+                  {error && <div style={{ fontSize: 12, color: '#dc2626' }}>{error}</div>}
 
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => {
@@ -305,15 +313,14 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
                       setError(null); save()
                     }} disabled={saving} style={{
                       padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-                      background: '#3d4a5c', color: '#fff', border: 'none', cursor: 'pointer',
-                      opacity: saving ? 0.6 : 1, fontFamily: 'var(--font-body)',
+                      background: '#111827', color: '#fff', border: 'none', cursor: 'pointer',
+                      opacity: saving ? 0.6 : 1,
                     }}>
                       {saving ? 'Saving…' : 'Save changes'}
                     </button>
                     <button onClick={() => { setEditing(false); setError(null) }} style={{
                       padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-                      background: '#f2f0ee', color: '#2c2420', border: '1px solid #e8e2dd', cursor: 'pointer',
-                      fontFamily: 'var(--font-body)',
+                      background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
                     }}>
                       Cancel
                     </button>
@@ -322,7 +329,7 @@ export default function ActivityDetailPanel({ activityId, onClose }: Props) {
               )}
             </>
           ) : (
-            <div style={{ color: '#a89e98', fontSize: 14 }}>Activity not found.</div>
+            <div style={{ color: '#9ca3af', fontSize: 14 }}>Activity not found.</div>
           )}
         </div>
       </div>

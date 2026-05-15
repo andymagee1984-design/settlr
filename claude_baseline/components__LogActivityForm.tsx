@@ -31,13 +31,12 @@ const TYPE_CONFIG: Record<string, { label: string; icon: string }> = {
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 6,
-  border: '1px solid #d4ccc5', fontSize: 13, color: '#2c2420',
+  border: '1px solid #d1d5db', fontSize: 13, color: '#111827',
   boxSizing: 'border-box', background: '#fff',
-  outline: 'none',
 }
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 12, fontWeight: 500, color: '#7a6e68', marginBottom: 4, display: 'block',
+  fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 4, display: 'block',
 }
 
 async function fetchOrgUsers(): Promise<OrgUser[]> {
@@ -66,7 +65,7 @@ export default function LogActivityForm({
   const { data: users = [], isError: usersError } = useQuery<OrgUser[]>({
     queryKey:  ['org-users'],
     queryFn:   fetchOrgUsers,
-    staleTime: 10 * 60 * 1000, // ← org users rarely change; cache for 10 min
+    staleTime: 5 * 60 * 1000,
     retry:     1,
   })
 
@@ -109,16 +108,19 @@ export default function LogActivityForm({
 
   return (
     <div style={{
-      background: '#f9f6f4', borderRadius: 8, padding: 16,
+      background: '#f9fafb', borderRadius: 8, padding: 16,
       display: 'flex', flexDirection: 'column', gap: 10,
-      border: '1px solid #e8e2dd',
+      border: '1px solid #e5e7eb',
     }}>
       {/* Row 1: Type + Date */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div>
           <label style={labelStyle}>Type</label>
-          <select style={inputStyle} value={form.activity_type}
-            onChange={(e) => setForm({ ...form, activity_type: e.target.value })}>
+          <select
+            style={inputStyle}
+            value={form.activity_type}
+            onChange={(e) => setForm({ ...form, activity_type: e.target.value })}
+          >
             {Object.entries(TYPE_CONFIG).map(([k, v]) => (
               <option key={k} value={k}>{v.label}</option>
             ))}
@@ -126,8 +128,12 @@ export default function LogActivityForm({
         </div>
         <div>
           <label style={labelStyle}>Date & time</label>
-          <input style={inputStyle} type="datetime-local" value={form.activity_date}
-            onChange={(e) => setForm({ ...form, activity_date: e.target.value })} />
+          <input
+            style={inputStyle}
+            type="datetime-local"
+            value={form.activity_date}
+            onChange={(e) => setForm({ ...form, activity_date: e.target.value })}
+          />
         </div>
       </div>
 
@@ -154,21 +160,28 @@ export default function LogActivityForm({
           <label style={labelStyle}>
             Due date
             {form.activity_type !== 'task' && (
-              <span style={{ fontWeight: 400, color: '#a89e98', marginLeft: 4 }}>(optional)</span>
+              <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 4 }}>(optional)</span>
             )}
           </label>
-          <input style={inputStyle} type="date" value={form.due_date}
-            onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+          <input
+            style={inputStyle}
+            type="date"
+            value={form.due_date}
+            onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+          />
         </div>
         <div>
           <label style={labelStyle}>
             Assign to
             {usersError && (
-              <span style={{ fontWeight: 400, color: '#882010', marginLeft: 4 }}>(failed to load)</span>
+              <span style={{ fontWeight: 400, color: '#dc2626', marginLeft: 4 }}>(failed to load)</span>
             )}
           </label>
-          <select style={inputStyle} value={form.assigned_to}
-            onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}>
+          <select
+            style={inputStyle}
+            value={form.assigned_to}
+            onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
+          >
             <option value="">Unassigned</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.full_name}</option>
@@ -188,7 +201,9 @@ export default function LogActivityForm({
         />
       </div>
 
-      {error && <div style={{ fontSize: 12, color: '#882010' }}>{error}</div>}
+      {error && (
+        <div style={{ fontSize: 12, color: '#dc2626' }}>{error}</div>
+      )}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button
@@ -196,9 +211,8 @@ export default function LogActivityForm({
           disabled={mutation.isPending}
           style={{
             padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-            background: '#3d4a5c', color: '#fff', border: 'none', cursor: 'pointer',
+            background: '#111827', color: '#fff', border: 'none', cursor: 'pointer',
             opacity: mutation.isPending ? 0.6 : 1,
-            fontFamily: 'var(--font-body)',
           }}
         >
           {mutation.isPending ? 'Saving…' : 'Save activity'}
@@ -208,8 +222,7 @@ export default function LogActivityForm({
             onClick={onCancel}
             style={{
               padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-              background: '#f2f0ee', color: '#2c2420', border: '1px solid #e8e2dd', cursor: 'pointer',
-              fontFamily: 'var(--font-body)',
+              background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
             }}
           >
             Cancel

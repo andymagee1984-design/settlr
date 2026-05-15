@@ -1,7 +1,7 @@
 // src/features/projects/ProjectDetailPage.tsx
 // Route: /projects/:id
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -644,109 +644,6 @@ function LotsSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lightbox
-// ─────────────────────────────────────────────────────────────────────────────
-
-function Lightbox({ images, startIndex, onClose }: {
-  images: { id: string; file_url: string | null; title: string; category: string }[]
-  startIndex: number
-  onClose: () => void
-}) {
-  const [index, setIndex] = useState(startIndex)
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowRight') setIndex(i => Math.min(i + 1, images.length - 1))
-      if (e.key === 'ArrowLeft')  setIndex(i => Math.max(i - 1, 0))
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [images.length, onClose])
-
-  const img = images[index]
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 2000,
-        background: 'rgba(20,16,14,0.92)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 24,
-      }}
-    >
-      {/* Close */}
-      <button
-        onClick={onClose}
-        style={{
-          position: 'absolute', top: 20, right: 20,
-          background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%',
-          width: 36, height: 36, cursor: 'pointer', color: '#fff', fontSize: 18,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-        aria-label="Close"
-      >
-        <X size={18} />
-      </button>
-
-      {/* Prev */}
-      {index > 0 && (
-        <button
-          onClick={e => { e.stopPropagation(); setIndex(i => i - 1) }}
-          style={{
-            position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)',
-            background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%',
-            width: 40, height: 40, cursor: 'pointer', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          aria-label="Previous"
-        >
-          <ArrowLeft size={18} />
-        </button>
-      )}
-
-      {/* Image */}
-      <div onClick={e => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        {img.file_url ? (
-          <img
-            src={img.file_url}
-            alt={img.title}
-            style={{ maxWidth: '90vw', maxHeight: '78vh', objectFit: 'contain', borderRadius: 8 }}
-          />
-        ) : (
-          <div style={{ width: 400, height: 300, background: '#2c2420', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Image size={48} color="#7a6e68" />
-          </div>
-        )}
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: 13, color: '#fff', fontWeight: 500, margin: 0 }}>{img.title}</p>
-          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3, textTransform: 'capitalize' }}>
-            {img.category.replace('_', ' ')} · {index + 1} of {images.length}
-          </p>
-        </div>
-      </div>
-
-      {/* Next */}
-      {index < images.length - 1 && (
-        <button
-          onClick={e => { e.stopPropagation(); setIndex(i => i + 1) }}
-          style={{
-            position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)',
-            background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%',
-            width: 40, height: 40, cursor: 'pointer', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          aria-label="Next"
-        >
-          <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }} />
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Project Info & Availability tab — 2-column layout
 // Left col:  About, Solicitor, Billing
 // Right col: Gallery images, Documents
@@ -765,8 +662,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 function ProjectInfoTab({ project, onLotClick, onRegisterSale }: { project: ProjectDetail; onLotClick: (id: string) => void; onRegisterSale: (lot: LotSummary) => void }) {
   const user        = useAuthStore(s => s.user)
   const queryClient = useQueryClient()
-  const [showUpload, setShowUpload]       = useState(false)
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const [showUpload, setShowUpload] = useState(false)
 
   const canUpload = user?.role?.permissions?.some(p => p.code === 'project.manage_media') ?? false
   const images = [...project.media.hero, ...project.media.gallery]
@@ -862,18 +758,8 @@ function ProjectInfoTab({ project, onLotClick, onRegisterSale }: { project: Proj
               <p style={{ fontSize: 13, fontStyle: 'italic', color: '#a89e98' }}>No images uploaded.</p>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {images.map((img, i) => (
-                  <div
-                    key={img.id}
-                    onClick={() => img.file_url ? setLightboxIndex(i) : undefined}
-                    style={{
-                      borderRadius: 8, border: '1px solid #f0ebe6', overflow: 'hidden',
-                      cursor: img.file_url ? 'zoom-in' : 'default',
-                      transition: 'transform 0.12s, box-shadow 0.12s',
-                    }}
-                    onMouseEnter={e => { if (img.file_url) { e.currentTarget.style.transform = 'scale(1.01)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(44,36,32,0.12)' }}}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none' }}
-                  >
+                {images.map(img => (
+                  <div key={img.id} style={{ borderRadius: 8, border: '1px solid #f0ebe6', overflow: 'hidden' }}>
                     {img.file_url
                       ? <img src={img.file_url} alt={img.title} style={{ height: 100, width: '100%', objectFit: 'cover', display: 'block' }} />
                       : <div style={{ height: 100, background: '#f9f6f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={24} color="#d4ccc5" /></div>
@@ -924,15 +810,6 @@ function ProjectInfoTab({ project, onLotClick, onRegisterSale }: { project: Proj
         </h3>
         <LotsSection project={project} onLotClick={onLotClick} onRegisterSale={onRegisterSale} />
       </div>
-
-      {/* Lightbox */}
-      {lightboxIndex !== null && images.length > 0 && (
-        <Lightbox
-          images={images}
-          startIndex={lightboxIndex}
-          onClose={() => setLightboxIndex(null)}
-        />
-      )}
     </div>
   )
 }

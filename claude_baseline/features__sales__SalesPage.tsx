@@ -1,5 +1,3 @@
-// src/features/sales/SalesPage.tsx
-
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getSales } from '../../api/sales'
@@ -8,15 +6,15 @@ import SaleActionModal from './SaleActionModal'
 import type { ActionType } from './SaleActionModal'
 import SaleDetailPanel from './SaleDetailPanel'
 
-const STATUS_COLOURS: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  on_hold:         { bg: '#fef6ec', color: '#7a4a00', border: '#fcd9a0', label: 'On Hold' },
-  pending:         { bg: '#eef2fb', color: '#1e3a7a', border: '#c5d3f0', label: 'Pending Approval' },
-  declined:        { bg: '#fdf0ee', color: '#882010', border: '#f5c4bb', label: 'Declined' },
-  reserved:        { bg: '#f5f0fb', color: '#5b2d8a', border: '#d9c5f5', label: 'Reserved' },
-  contract_issued: { bg: '#fef6ec', color: '#9a5f00', border: '#fcd9a0', label: 'Contract Issued' },
-  exchanged:       { bg: '#eef7f0', color: '#1a5c2e', border: '#b8dfc3', label: 'Exchanged' },
-  settled:         { bg: '#eef7f0', color: '#1a5c2e', border: '#b8dfc3', label: 'Settled' },
-  fallen_over:     { bg: '#f2f0ee', color: '#7a6e68', border: '#ddd7d2', label: 'Fallen Over' },
+const STATUS_COLOURS: Record<string, { bg: string; color: string; label: string }> = {
+  on_hold:         { bg: '#fef9c3', color: '#854d0e', label: 'On Hold' },
+  pending:         { bg: '#dbeafe', color: '#1e40af', label: 'Pending Approval' },
+  declined:        { bg: '#fee2e2', color: '#991b1b', label: 'Declined' },
+  reserved:        { bg: '#ede9fe', color: '#5b21b6', label: 'Reserved' },
+  contract_issued: { bg: '#ffedd5', color: '#9a3412', label: 'Contract Issued' },
+  exchanged:       { bg: '#d1fae5', color: '#065f46', label: 'Exchanged' },
+  settled:         { bg: '#f0fdf4', color: '#166534', label: 'Settled' },
+  fallen_over:     { bg: '#f3f4f6', color: '#6b7280', label: 'Fallen Over' },
 }
 
 const ACTIONS_BY_STATUS: Record<string, ActionType[]> = {
@@ -36,21 +34,20 @@ const ACTION_LABELS: Record<ActionType, string> = {
   fall_over: 'Fall Over',
 }
 
-const ACTION_STYLES: Record<ActionType, { bg: string; color: string; border: string }> = {
-  submit:    { bg: '#3d4a5c', color: '#fff',     border: '#3d4a5c' },
-  approve:   { bg: '#eef7f0', color: '#1a5c2e',  border: '#b8dfc3' },
-  decline:   { bg: '#fdf0ee', color: '#882010',  border: '#f5c4bb' },
-  progress:  { bg: '#3d4a5c', color: '#fff',     border: '#3d4a5c' },
-  fall_over: { bg: '#f2f0ee', color: '#7a6e68',  border: '#ddd7d2' },
+const ACTION_STYLES: Record<ActionType, { bg: string; color: string }> = {
+  submit:    { bg: '#111827', color: '#fff' },
+  approve:   { bg: '#16a34a', color: '#fff' },
+  decline:   { bg: '#fee2e2', color: '#991b1b' },
+  progress:  { bg: '#111827', color: '#fff' },
+  fall_over: { bg: '#f3f4f6', color: '#6b7280' },
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_COLOURS[status] ?? { bg: '#f2f0ee', color: '#7a6e68', border: '#ddd7d2', label: status }
+  const s = STATUS_COLOURS[status] ?? { bg: '#f3f4f6', color: '#6b7280', label: status }
   return (
     <span style={{
       background: s.bg, color: s.color, fontSize: 11, fontWeight: 500,
       padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
-      border: `1px solid ${s.border}`,
     }}>
       {s.label}
     </span>
@@ -59,13 +56,14 @@ function StatusBadge({ status }: { status: string }) {
 
 function OnHoldTimer({ expiry }: { expiry: string }) {
   const expires = new Date(expiry)
-  const diffMs  = expires.getTime() - Date.now()
-  const diffHrs  = Math.floor(diffMs / 1000 / 60 / 60)
+  const now = new Date()
+  const diffMs = expires.getTime() - now.getTime()
+  const diffHrs = Math.floor(diffMs / 1000 / 60 / 60)
   const diffMins = Math.floor((diffMs / 1000 / 60) % 60)
-  if (diffMs <= 0) return <span style={{ fontSize: 11, color: '#882010' }}>Expired</span>
+  if (diffMs <= 0) return <span style={{ fontSize: 11, color: '#dc2626' }}>Expired</span>
   const urgent = diffHrs < 2
   return (
-    <span style={{ fontSize: 11, color: urgent ? '#882010' : '#9a5f00', fontWeight: urgent ? 600 : 400 }}>
+    <span style={{ fontSize: 11, color: urgent ? '#dc2626' : '#854d0e', fontWeight: urgent ? 600 : 400 }}>
       <i className="ti ti-clock" style={{ marginRight: 3 }} />
       {diffHrs}h {diffMins}m remaining
     </span>
@@ -73,7 +71,7 @@ function OnHoldTimer({ expiry }: { expiry: string }) {
 }
 
 function SaleCard({ sale, onAction, onSelect }: {
-  sale:     Sale
+  sale: Sale
   onAction: (sale: Sale, action: ActionType) => void
   onSelect: (id: string) => void
 }) {
@@ -83,28 +81,25 @@ function SaleCard({ sale, onAction, onSelect }: {
     <div
       onClick={() => onSelect(sale.id)}
       style={{
-        background: '#fff', border: '1px solid #e8e2dd', borderRadius: 8,
+        background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
         padding: '16px 20px', cursor: 'pointer',
-        transition: 'background 0.1s',
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = '#faf8f7')}
-      onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ minWidth: 140 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#2c2420' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
             Lot {sale.lot_number}
           </div>
-          <div style={{ fontSize: 12, color: '#7a6e68', marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
             {sale.project_name}
           </div>
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, color: '#2c2420', fontWeight: 500 }}>
+          <div style={{ fontSize: 13, color: '#111827', fontWeight: 500 }}>
             {sale.primary_buyer_name}
           </div>
-          <div style={{ fontSize: 11, color: '#a89e98', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
             {sale.sale_price ? `$${Number(sale.sale_price).toLocaleString()}` : 'Price TBC'}
           </div>
         </div>
@@ -114,7 +109,7 @@ function SaleCard({ sale, onAction, onSelect }: {
             <OnHoldTimer expiry={sale.on_hold_expiry} />
           )}
           {sale.status === 'settled' && sale.settled_at && (
-            <span style={{ fontSize: 11, color: '#1a5c2e' }}>
+            <span style={{ fontSize: 11, color: '#166534' }}>
               <i className="ti ti-check" style={{ marginRight: 3 }} />
               Settled {new Date(sale.settled_at).toLocaleDateString('en-AU')}
             </span>
@@ -123,7 +118,7 @@ function SaleCard({ sale, onAction, onSelect }: {
 
         <StatusBadge status={sale.status} />
 
-        <div style={{ fontSize: 11, color: '#a89e98', minWidth: 80, textAlign: 'right' }}>
+        <div style={{ fontSize: 11, color: '#9ca3af', minWidth: 80, textAlign: 'right' }}>
           {new Date(sale.created_at).toLocaleDateString('en-AU')}
         </div>
       </div>
@@ -131,7 +126,7 @@ function SaleCard({ sale, onAction, onSelect }: {
       {actions.length > 0 && (
         <div
           onClick={(e) => e.stopPropagation()}
-          style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0ebe6' }}
+          style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}
         >
           {actions.map((action) => (
             <button
@@ -139,10 +134,9 @@ function SaleCard({ sale, onAction, onSelect }: {
               onClick={() => onAction(sale, action)}
               style={{
                 padding: '5px 12px', borderRadius: 5, fontSize: 12, fontWeight: 500,
-                cursor: 'pointer', border: `1px solid ${ACTION_STYLES[action].border}`,
+                cursor: 'pointer', border: 'none',
                 background: ACTION_STYLES[action].bg,
                 color: ACTION_STYLES[action].color,
-                fontFamily: 'var(--font-body)',
               }}
             >
               {ACTION_LABELS[action]}
@@ -155,14 +149,13 @@ function SaleCard({ sale, onAction, onSelect }: {
 }
 
 export default function SalesPage() {
-  const [statusFilter,  setStatusFilter]  = useState('')
-  const [activeModal,   setActiveModal]   = useState<{ sale: Sale; action: ActionType } | null>(null)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [activeModal, setActiveModal] = useState<{ sale: Sale; action: ActionType } | null>(null)
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
 
   const { data: sales = [], isLoading } = useQuery<Sale[]>({
-    queryKey:  ['sales'],
-    queryFn:   getSales,
-    staleTime: 30_000, // ← sales don't change every second
+    queryKey: ['sales'],
+    queryFn: getSales,
   })
 
   const activeStatuses = ['on_hold', 'pending', 'declined', 'reserved', 'contract_issued', 'exchanged']
@@ -176,67 +169,71 @@ export default function SalesPage() {
     return acc
   }, {})
 
-  const filterBtn = (
-    label: string,
-    active: boolean,
-    onClick: () => void,
-    sc?: { bg: string; color: string; border: string }
-  ) => (
-    <button onClick={onClick} style={{
-      padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontWeight: 500,
-      background: active ? (sc?.bg ?? '#3d4a5c') : '#f2f0ee',
-      color:      active ? (sc?.color ?? '#fff') : '#7a6e68',
-      border:     active ? `1px solid ${sc?.border ?? '#3d4a5c'}` : '1px solid transparent',
-      fontFamily: 'var(--font-body)',
-    }}>
-      {label}
-    </button>
-  )
-
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1200, background: '#f9f6f4', minHeight: '100vh' }}>
+    <div style={{ padding: '24px 28px', maxWidth: 1200 }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#2c2420', margin: 0 }}>Sales</h1>
-        <div style={{ fontSize: 13, color: '#7a6e68', marginTop: 4 }}>Active sales pipeline</div>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: 0 }}>Sales</h1>
+        <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Active sales pipeline</div>
       </div>
 
       {/* Status filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-        {filterBtn(
-          `Active (${sales.filter(s => activeStatuses.includes(s.status)).length})`,
-          statusFilter === '',
-          () => setStatusFilter(''),
-        )}
+        <button
+          onClick={() => setStatusFilter('')}
+          style={{
+            padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+            background: statusFilter === '' ? '#111827' : '#f3f4f6',
+            color: statusFilter === '' ? '#fff' : '#374151',
+            border: 'none', fontWeight: 500,
+          }}
+        >
+          Active ({sales.filter(s => activeStatuses.includes(s.status)).length})
+        </button>
         {activeStatuses.filter(s => statusCounts[s]).map((s) => {
           const sc = STATUS_COLOURS[s]
-          return filterBtn(
-            `${sc?.label ?? s} (${statusCounts[s]})`,
-            statusFilter === s,
-            () => setStatusFilter(s === statusFilter ? '' : s),
-            sc,
+          return (
+            <button key={s} onClick={() => setStatusFilter(s === statusFilter ? '' : s)}
+              style={{
+                padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                background: statusFilter === s ? sc?.bg ?? '#f3f4f6' : '#f3f4f6',
+                color: statusFilter === s ? sc?.color ?? '#374151' : '#374151',
+                border: statusFilter === s ? `1px solid ${sc?.color ?? '#374151'}` : '1px solid transparent',
+                fontWeight: 500,
+              }}
+            >
+              {sc?.label ?? s} ({statusCounts[s]})
+            </button>
           )
         })}
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          {filterBtn(
-            `Settled (${statusCounts['settled'] ?? 0})`,
-            statusFilter === 'settled',
-            () => setStatusFilter(statusFilter === 'settled' ? '' : 'settled'),
-            STATUS_COLOURS['settled'],
-          )}
-          {filterBtn(
-            `Fallen Over (${statusCounts['fallen_over'] ?? 0})`,
-            statusFilter === 'fallen_over',
-            () => setStatusFilter(statusFilter === 'fallen_over' ? '' : 'fallen_over'),
-            STATUS_COLOURS['fallen_over'],
-          )}
-        </span>
+        <button
+          onClick={() => setStatusFilter(statusFilter === 'settled' ? '' : 'settled')}
+          style={{
+            padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+            background: '#f3f4f6', color: '#166534',
+            border: statusFilter === 'settled' ? '1px solid #166534' : '1px solid transparent',
+            fontWeight: 500, marginLeft: 'auto',
+          }}
+        >
+          Settled ({statusCounts['settled'] ?? 0})
+        </button>
+        <button
+          onClick={() => setStatusFilter(statusFilter === 'fallen_over' ? '' : 'fallen_over')}
+          style={{
+            padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+            background: '#f3f4f6', color: '#6b7280',
+            border: statusFilter === 'fallen_over' ? '1px solid #6b7280' : '1px solid transparent',
+            fontWeight: 500,
+          }}
+        >
+          Fallen Over ({statusCounts['fallen_over'] ?? 0})
+        </button>
       </div>
 
       {/* Sales list */}
       {isLoading ? (
-        <div style={{ color: '#a89e98', fontSize: 14 }}>Loading sales…</div>
+        <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading sales…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ color: '#a89e98', fontSize: 14 }}>No sales found.</div>
+        <div style={{ color: '#9ca3af', fontSize: 14 }}>No sales found.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map((sale) => (
