@@ -355,3 +355,101 @@ class LotPriceHistorySerializer(serializers.ModelSerializer):
         if obj.changed_by:
             return f"{obj.changed_by.first_name} {obj.changed_by.last_name}".strip()
         return None
+
+# =============================================================================
+# DA & Planning serializers
+# =============================================================================
+
+from apps.projects.models import DevelopmentApplication, DACondition, DAMilestone
+
+
+class DAConditionSerializer(serializers.ModelSerializer):
+    responsible_party_name = serializers.SerializerMethodField()
+    is_overdue             = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model  = DACondition
+        fields = [
+            "id", "da", "condition_number", "category", "description",
+            "status", "responsible_party", "responsible_party_name",
+            "due_date", "completed_date", "notes",
+            "is_overdue", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_responsible_party_name(self, obj):
+        if obj.responsible_party:
+            return obj.responsible_party.get_full_name()
+        return None
+
+
+class DAMilestoneSerializer(serializers.ModelSerializer):
+    display_label = serializers.CharField(read_only=True)
+    is_overdue    = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model  = DAMilestone
+        fields = [
+            "id", "da", "milestone_type", "label", "display_label",
+            "planned_date", "actual_date", "notes",
+            "is_overdue", "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class DevelopmentApplicationSerializer(serializers.ModelSerializer):
+    conditions        = DAConditionSerializer(many=True, read_only=True)
+    milestones        = DAMilestoneSerializer(many=True, read_only=True)
+    stage_name        = serializers.SerializerMethodField()
+    is_lapsing_soon   = serializers.BooleanField(read_only=True)
+    days_until_lapse  = serializers.IntegerField(read_only=True)
+    open_conditions   = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = DevelopmentApplication
+        fields = [
+            "id", "project", "stage", "stage_name",
+            "reference_number", "authority", "status",
+            "lodgement_date", "approval_date", "lapse_date",
+            "commencement_confirmed", "commencement_date",
+            "notes", "is_lapsing_soon", "days_until_lapse",
+            "open_conditions",
+            "conditions", "milestones",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_stage_name(self, obj):
+        return obj.stage.name if obj.stage else None
+
+    def get_open_conditions(self, obj):
+        return obj.conditions.exclude(status__in=["complete", "waived"]).count()
+
+
+class DevelopmentApplicationListSerializer(serializers.ModelSerializer):
+    stage_name       = serializers.SerializerMethodField()
+    is_lapsing_soon  = serializers.BooleanField(read_only=True)
+    days_until_lapse = serializers.IntegerField(read_only=True)
+    open_conditions  = serializers.SerializerMethodField()
+    total_conditions = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = DevelopmentApplication
+        fields = [
+            "id", "project", "stage", "stage_name",
+            "reference_number", "authority", "status",
+            "lodgement_date", "approval_date", "lapse_date",
+            "commencement_confirmed", "commencement_date",
+            "is_lapsing_soon", "days_until_lapse",
+            "open_conditions", "total_conditions",
+            "created_at", "updated_at",
+        ]
+
+    def get_stage_name(self, obj):
+        return obj.stage.name if obj.stage else None
+
+    def get_open_conditions(self, obj):
+        return obj.conditions.exclude(status__in=["complete", "waived"]).count()
+
+    def get_total_conditions(self, obj):
+        return obj.conditions.count()

@@ -545,3 +545,104 @@ class ProjectMediaUploadSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         return ProjectMediaSerializer(instance, context=self.context).data
+
+# =============================================================================
+# DA & Planning ViewSets
+# =============================================================================
+
+from apps.projects.models import DevelopmentApplication, DACondition, DAMilestone
+from apps.projects.serializers import (
+    DevelopmentApplicationSerializer,
+    DevelopmentApplicationListSerializer,
+    DAConditionSerializer,
+    DAMilestoneSerializer,
+)
+
+
+class DevelopmentApplicationViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Development Applications.
+    Scoped to the request user's organisation.
+    Requires da.manage permission for write operations.
+    """
+
+    def get_queryset(self):
+        org = self.request.user.organisation
+        qs  = DevelopmentApplication.objects.filter(
+            project__organisation=org
+        ).select_related("project", "stage").prefetch_related("conditions", "milestones")
+
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+
+        return qs
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return DevelopmentApplicationListSerializer
+        return DevelopmentApplicationSerializer
+
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [HasPermission("da.manage")]
+        return [HasPermission("report.view")]
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+
+class DAConditionViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for DA Conditions.
+    Requires da.manage permission for write operations.
+    """
+
+    def get_queryset(self):
+        org = self.request.user.organisation
+        qs  = DACondition.objects.filter(
+            da__project__organisation=org
+        ).select_related("da", "responsible_party")
+
+        da_id = self.request.query_params.get("da")
+        if da_id:
+            qs = qs.filter(da_id=da_id)
+
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        return qs
+
+    serializer_class = DAConditionSerializer
+
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [HasPermission("da.manage")]
+        return [HasPermission("report.view")]
+
+
+class DAMilestoneViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for DA Milestones.
+    Requires da.manage permission for write operations.
+    """
+
+    def get_queryset(self):
+        org = self.request.user.organisation
+        qs  = DAMilestone.objects.filter(
+            da__project__organisation=org
+        ).select_related("da")
+
+        da_id = self.request.query_params.get("da")
+        if da_id:
+            qs = qs.filter(da_id=da_id)
+
+        return qs
+
+    serializer_class = DAMilestoneSerializer
+
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [HasPermission("da.manage")]
+        return [HasPermission("report.view")]
