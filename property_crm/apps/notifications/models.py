@@ -1,7 +1,6 @@
 """
 apps/notifications/models.py
 """
-
 import uuid
 from django.db import models
 from apps.core.models import OrgScopedModel
@@ -34,13 +33,17 @@ class Notification(OrgScopedModel):
     """In-app notification delivered to a specific user."""
 
     class NotifType(models.TextChoices):
-        SALE_PENDING   = "sale_pending",   "Sale pending approval"
-        SALE_APPROVED  = "sale_approved",  "Sale approved"
-        SALE_DECLINED  = "sale_declined",  "Sale declined"
-        ON_HOLD_EXPIRY = "on_hold_expiry", "On hold expiring soon"
-        DUE_TOMORROW   = "due_tomorrow",   "Activity due tomorrow"
-        DUE_TODAY      = "due_today",      "Activity due today"
-        OVERDUE        = "overdue",        "Activity overdue"
+        SALE_PENDING          = "sale_pending",          "Sale pending approval"
+        SALE_APPROVED         = "sale_approved",         "Sale approved"
+        SALE_DECLINED         = "sale_declined",         "Sale declined"
+        ON_HOLD_EXPIRY        = "on_hold_expiry",        "On hold expiring soon"
+        DUE_TOMORROW          = "due_tomorrow",          "Activity due tomorrow"
+        DUE_TODAY             = "due_today",             "Activity due today"
+        OVERDUE               = "overdue",               "Activity overdue"
+        DA_LAPSE_WARNING      = "da_lapse_warning",      "DA lapsing soon"
+        DA_CONDITION_DUE_SOON = "da_condition_due_soon", "DA condition due soon"
+        DA_CONDITION_OVERDUE  = "da_condition_overdue",  "DA condition overdue"
+        DA_MILESTONE_OVERDUE  = "da_milestone_overdue",  "DA milestone overdue"
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     recipient  = models.ForeignKey(
@@ -54,6 +57,18 @@ class Notification(OrgScopedModel):
     sale       = models.ForeignKey(
         "sales.Sale",
         on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="notifications",
+    )
+    da         = models.ForeignKey(
+        "projects.DevelopmentApplication",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="notifications",
+    )
+    project    = models.ForeignKey(
+        "projects.Project",
+        on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="notifications",
     )

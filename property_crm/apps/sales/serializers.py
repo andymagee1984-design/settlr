@@ -103,7 +103,7 @@ class SaleSerializer(serializers.ModelSerializer):
 class SaleCreateSerializer(serializers.Serializer):
     """Used by POST /sales/ — creates a sale at On Hold status."""
     lot_id             = serializers.UUIDField()
-    primary_buyer_id   = serializers.UUIDField()
+    prospect_id        = serializers.UUIDField()
     secondary_buyer_id = serializers.UUIDField(required=False, allow_null=True)
     agent_id           = serializers.UUIDField(required=False, allow_null=True)
     referrer_id        = serializers.UUIDField(required=False, allow_null=True)

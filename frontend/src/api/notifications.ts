@@ -1,13 +1,21 @@
 // src/api/notifications.ts
-
 import client from './client'
 
 export interface Notification {
   id: string
-  notif_type: 'sale_pending' | 'sale_approved' | 'sale_declined' | 'on_hold_expiry'
+  notif_type:
+    | 'sale_pending'
+    | 'sale_approved'
+    | 'sale_declined'
+    | 'on_hold_expiry'
+    | 'da_lapse_warning'
+    | 'da_condition_due_soon'
+    | 'da_condition_overdue'
+    | 'da_milestone_overdue'
   title: string
   message: string
   sale_id: string | null
+  project_id: string | null
   lot_number: string | null
   project_name: string | null
   is_read: boolean

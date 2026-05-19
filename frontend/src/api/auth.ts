@@ -1,3 +1,6 @@
+// src/api/auth.ts
+
+import axios from 'axios'
 import client from './client'
 import type { User } from '../types/types'
 
@@ -16,11 +19,16 @@ export const login = async (credentials: LoginCredentials): Promise<TokenRespons
   return data
 }
 
-export const getMe = async (): Promise<User> => {
+export const getMe = async (token?: string): Promise<User> => {
+  // If a token is provided (e.g. immediately after login before Zustand is populated),
+  // use it directly rather than relying on the store interceptor.
+  if (token) {
+    const { data } = await axios.get<User>('/api/v1/auth/me/', {
+      headers: { Authorization: `Bearer ${token}` },
+      withCredentials: true,
+    })
+    return data
+  }
   const { data } = await client.get<User>('/auth/me/')
   return data
-}
-
-export const logout = async (): Promise<void> => {
-  sessionStorage.removeItem('access_token')
 }

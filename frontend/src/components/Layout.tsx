@@ -1,4 +1,5 @@
-// src/components/Layout.tsx
+// LOCATION: property_crm/frontend/src/components/Layout.tsx
+// Full replacement.
 
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
@@ -8,13 +9,19 @@ import { getNotifications, markAllRead, markOneRead } from '../api/notifications
 import type { Notification } from '../api/notifications'
 
 const NOTIF_CONFIG: Record<string, { icon: string; iconColor: string; iconBg: string }> = {
-  sale_pending:   { icon: 'ti-clock',          iconColor: '#9a5f00', iconBg: '#fef6ec' },
-  sale_approved:  { icon: 'ti-check',          iconColor: '#1a5c2e', iconBg: '#eef7f0' },
-  sale_declined:  { icon: 'ti-x',              iconColor: '#882010', iconBg: '#fdf0ee' },
-  on_hold_expiry: { icon: 'ti-alert-triangle', iconColor: '#9a5f00', iconBg: '#fef6ec' },
-  due_tomorrow:   { icon: 'ti-calendar',       iconColor: '#2649a0', iconBg: '#eef2fb' },
-  due_today:      { icon: 'ti-alarm',          iconColor: '#9a5f00', iconBg: '#fef6ec' },
-  overdue:        { icon: 'ti-alert-circle',   iconColor: '#882010', iconBg: '#fdf0ee' },
+  // Sale notifications
+  sale_pending:          { icon: 'ti-clock',          iconColor: '#9a5f00', iconBg: '#fef6ec' },
+  sale_approved:         { icon: 'ti-check',          iconColor: '#1a5c2e', iconBg: '#eef7f0' },
+  sale_declined:         { icon: 'ti-x',              iconColor: '#882010', iconBg: '#fdf0ee' },
+  on_hold_expiry:        { icon: 'ti-alert-triangle', iconColor: '#9a5f00', iconBg: '#fef6ec' },
+  due_tomorrow:          { icon: 'ti-calendar',       iconColor: '#2649a0', iconBg: '#eef2fb' },
+  due_today:             { icon: 'ti-alarm',          iconColor: '#9a5f00', iconBg: '#fef6ec' },
+  overdue:               { icon: 'ti-alert-circle',   iconColor: '#882010', iconBg: '#fdf0ee' },
+  // DA notifications
+  da_lapse_warning:      { icon: 'ti-calendar-x',     iconColor: '#882010', iconBg: '#fdf0ee' },
+  da_condition_due_soon: { icon: 'ti-calendar-clock', iconColor: '#9a5f00', iconBg: '#fef6ec' },
+  da_condition_overdue:  { icon: 'ti-alert-circle',   iconColor: '#882010', iconBg: '#fdf0ee' },
+  da_milestone_overdue:  { icon: 'ti-flag-x',         iconColor: '#882010', iconBg: '#fdf0ee' },
 }
 
 function timeAgo(iso: string): string {
@@ -88,23 +95,28 @@ function NotificationDropdown({
           </div>
         ) : (
           notifications.slice(0, 10).map((n, i) => {
-            const cfg = NOTIF_CONFIG[n.notif_type] ?? NOTIF_CONFIG.sale_pending
+            const cfg       = NOTIF_CONFIG[n.notif_type] ?? NOTIF_CONFIG.sale_pending
+            const isClickable = !!(n.sale_id || n.project_id)
             return (
               <div
                 key={n.id}
                 onClick={() => {
                   if (!n.is_read) onMarkOneRead(n.id)
-                  if (n.sale_id) onNavigate('sales')
+                  if (n.sale_id) {
+                    onNavigate('sales')
+                  } else if (n.project_id) {
+                    onNavigate(`projects/${n.project_id}?tab=planning`)
+                  }
                 }}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10,
                   padding: '10px 16px',
                   borderBottom: i < Math.min(notifications.length, 10) - 1 ? '1px solid #f0ebe6' : 'none',
                   background: n.is_read ? '#fff' : '#faf8f7',
-                  cursor: n.sale_id ? 'pointer' : 'default',
+                  cursor: isClickable ? 'pointer' : 'default',
                   transition: 'background 0.1s',
                 }}
-                onMouseEnter={e => { if (n.sale_id) (e.currentTarget as HTMLDivElement).style.background = '#f2f0ee' }}
+                onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLDivElement).style.background = '#f2f0ee' }}
                 onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = n.is_read ? '#fff' : '#faf8f7'}
               >
                 <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, marginTop: 6, background: n.is_read ? 'transparent' : '#c0533a' }} />
@@ -145,7 +157,7 @@ export default function Layout() {
     queryKey:        ['notifications'],
     queryFn:         getNotifications,
     refetchInterval: 30_000,
-    staleTime:       20_000,  // ← avoid redundant refetch on focus
+    staleTime:       20_000,
   })
 
   const unreadCount = notifications.filter(n => !n.is_read).length

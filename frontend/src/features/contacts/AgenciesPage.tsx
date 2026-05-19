@@ -6,6 +6,7 @@ import { getAgents, createAgency } from '../../api/contacts'
 import { useAuthStore } from '../../store/authStore'
 import client from '../../api/client'
 import type { Agent } from '../../api/contacts'
+import AddressAutocomplete from '../../components/AddressAutocomplete'
 
 interface Agency {
   id: string
@@ -65,19 +66,33 @@ function AddAgencyModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {[
-            { key: 'name',    label: 'Agency name *', type: 'text',  placeholder: 'e.g. Ray White Canberra' },
-            { key: 'email',   label: 'Email',         type: 'email', placeholder: '' },
-            { key: 'phone',   label: 'Phone',         type: 'text',  placeholder: '' },
-            { key: 'address', label: 'Address',       type: 'text',  placeholder: '' },
-          ].map(({ key, label, type, placeholder }) => (
-            <div key={key}>
-              <label style={labelStyle}>{label}</label>
-              <input style={inputStyle} type={type} placeholder={placeholder}
-                value={(form as any)[key]}
-                onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
-            </div>
-          ))}
+          <div>
+            <label style={labelStyle}>Agency name *</label>
+            <input style={inputStyle} type="text" placeholder="e.g. Ray White Canberra"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div>
+            <label style={labelStyle}>Email</label>
+            <input style={inputStyle} type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </div>
+          <div>
+            <label style={labelStyle}>Phone</label>
+            <input style={inputStyle} type="text"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          </div>
+          <div>
+            <label style={labelStyle}>Address</label>
+            <AddressAutocomplete
+              value={form.address}
+              onChange={(address) => setForm({ ...form, address })}
+              inputStyle={inputStyle}
+              placeholder="Start typing an address…"
+            />
+          </div>
           {error && <div style={{ padding: '10px 12px', background: '#fdf0ee', borderRadius: 6, fontSize: 13, color: '#882010', border: '1px solid #f5c4bb' }}>{error}</div>}
         </div>
         <div style={{ padding: '16px 24px', borderTop: '1px solid #f0ebe6', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -338,6 +353,7 @@ export default function AgenciesPage() {
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#2c2420' }}>{agency.name}</div>
                         {agency.email && <div style={{ fontSize: 12, color: '#7a6e68', marginTop: 2 }}>{agency.email}</div>}
+                        {agency.address && <div style={{ fontSize: 11, color: '#a89e98', marginTop: 2 }}>{agency.address}</div>}
                         {rateLabel && (
                           <div style={{ fontSize: 11, color: hasRate ? '#1a5c2e' : '#a89e98', marginTop: 4 }}>
                             {rateLabel}

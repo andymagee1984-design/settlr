@@ -159,27 +159,69 @@ const labelStyle: React.CSSProperties = {
 
 function AddProspectModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState({
-    first_name: '', last_name: '', email: '', phone: '',
-    source: 'walk_in', notes: '',
+    first_name:       '',
+    last_name:        '',
+    email:            '',
+    phone:            '',
+    source:           'walk_in',
+    engagement_level: 'cold',
+    purchase_intent:  'undecided',
+    project:          '',
+    budget_min:       '',
+    budget_max:       '',
+    assigned_to:      '',
+    notes:            '',
   })
   const [error, setError] = useState<string | null>(null)
 
+  const { data: orgUsers = [] } = useQuery<OrgUser[]>({
+    queryKey: ['org-users'],
+    queryFn:  fetchOrgUsers,
+    staleTime: 10 * 60 * 1000,
+  })
+
+  const { data: projects = [] } = useQuery<ProjectOption[]>({
+    queryKey: ['projects', 'list'],
+    queryFn:  fetchProjects,
+    staleTime: 60_000,
+  })
+
   const { mutate, isPending } = useMutation({
-    mutationFn: async () => { await client.post('/prospects/', form) },
-    onSuccess:  () => { onSuccess(); onClose() },
-    onError:    (err: any) => setError(err?.response?.data?.detail ?? 'Failed to create prospect.'),
+    mutationFn: async () => {
+      await client.post('/prospects/', {
+        first_name:       form.first_name,
+        last_name:        form.last_name,
+        email:            form.email,
+        phone:            form.phone || '',
+        source:           form.source,
+        engagement_level: form.engagement_level,
+        purchase_intent:  form.purchase_intent || 'undecided',
+        project:          form.project || null,
+        budget_min:       form.budget_min ? parseFloat(form.budget_min) : null,
+        budget_max:       form.budget_max ? parseFloat(form.budget_max) : null,
+        assigned_to:      form.assigned_to || null,
+        notes:            form.notes,
+      })
+    },
+    onSuccess: () => { onSuccess(); onClose() },
+    onError:   (err: any) => setError(err?.response?.data?.detail ?? 'Failed to create prospect.'),
   })
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(44,36,32,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(44,36,32,0.18)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #f0ebe6' }}>
+      <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', boxShadow: '0 20px 60px rgba(44,36,32,0.18)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #f0ebe6', flexShrink: 0 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600, color: '#2c2420', margin: 0 }}>Add prospect</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a89e98' }}><X size={18} /></button>
         </div>
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+        {/* Body */}
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={labelStyle}>First name *</label>
@@ -190,14 +232,36 @@ function AddProspectModal({ onClose, onSuccess }: { onClose: () => void; onSucce
               <input style={inputStyle} value={form.last_name} onChange={e => set('last_name', e.target.value)} placeholder="Smith" />
             </div>
           </div>
+
           <div>
             <label style={labelStyle}>Email *</label>
             <input style={inputStyle} type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="john@example.com" />
           </div>
+
           <div>
             <label style={labelStyle}>Phone</label>
             <input style={inputStyle} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="0400 000 000" />
           </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Engagement</label>
+              <select style={inputStyle} value={form.engagement_level} onChange={e => set('engagement_level', e.target.value)}>
+                <option value="cold">Cold</option>
+                <option value="warm">Warm</option>
+                <option value="hot">Hot</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Purchase intent</label>
+              <select style={inputStyle} value={form.purchase_intent} onChange={e => set('purchase_intent', e.target.value)}>
+                <option value="undecided">Not set</option>
+                <option value="owner_occupier">Owner occupier</option>
+                <option value="investor">Investor</option>
+              </select>
+            </div>
+          </div>
+
           <div>
             <label style={labelStyle}>Source</label>
             <select style={inputStyle} value={form.source} onChange={e => set('source', e.target.value)}>
@@ -209,11 +273,42 @@ function AddProspectModal({ onClose, onSuccess }: { onClose: () => void; onSucce
               <option value="other">Other</option>
             </select>
           </div>
+
+          <div>
+            <label style={labelStyle}>Project interest</label>
+            <select style={inputStyle} value={form.project} onChange={e => set('project', e.target.value)}>
+              <option value="">No project selected</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Budget min</label>
+              <input style={inputStyle} type="number" placeholder="e.g. 400000" value={form.budget_min}
+                onChange={e => set('budget_min', e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Budget max</label>
+              <input style={inputStyle} type="number" placeholder="e.g. 600000" value={form.budget_max}
+                onChange={e => set('budget_max', e.target.value)} />
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Assigned to</label>
+            <select style={inputStyle} value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}>
+              <option value="">Unassigned</option>
+              {orgUsers.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+            </select>
+          </div>
+
           <div>
             <label style={labelStyle}>Notes</label>
             <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 72 }} value={form.notes}
               onChange={e => set('notes', e.target.value)} placeholder="Any initial notes about this prospect…" />
           </div>
+
           {error && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: '#fdf0ee', borderRadius: 8, border: '1px solid #f5c4bb' }}>
               <AlertCircle size={13} color="#882010" />
@@ -221,11 +316,15 @@ function AddProspectModal({ onClose, onSuccess }: { onClose: () => void; onSucce
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 20px', borderTop: '1px solid #f0ebe6' }}>
+
+        {/* Footer */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 20px', borderTop: '1px solid #f0ebe6', flexShrink: 0 }}>
           <button onClick={onClose} style={{ borderRadius: 8, border: '1px solid #e8e2dd', padding: '8px 16px', fontSize: 13, fontWeight: 500, color: '#7a6e68', cursor: 'pointer', background: '#fff', fontFamily: 'var(--font-body)' }}>
             Cancel
           </button>
-          <button onClick={() => mutate()} disabled={isPending || !form.first_name || !form.last_name || !form.email}
+          <button
+            onClick={() => mutate()}
+            disabled={isPending || !form.first_name || !form.last_name || !form.email}
             style={{ borderRadius: 8, background: '#3d4a5c', padding: '8px 16px', fontSize: 13, fontWeight: 500, color: '#fff', cursor: 'pointer', border: 'none', opacity: (isPending || !form.first_name || !form.last_name || !form.email) ? 0.4 : 1, fontFamily: 'var(--font-body)' }}>
             {isPending ? 'Creating…' : 'Create prospect'}
           </button>
@@ -279,7 +378,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
     staleTime: 60_000,
   })
 
-  // Populate edit form when prospect loads
   useEffect(() => {
     if (prospect) {
       setForm({
@@ -349,7 +447,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(44,36,32,0.3)' }} />
       <div style={{ width: 480, background: '#fff', height: '100vh', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(44,36,32,0.10)', display: 'flex', flexDirection: 'column' }}>
 
-        {/* Header */}
         <div style={{ padding: '18px 22px', borderBottom: '1px solid #f0ebe6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, color: '#2c2420', margin: 0 }}>
             {editing ? 'Edit prospect' : 'Prospect'}
@@ -377,9 +474,7 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
           <div style={{ padding: 24, color: '#a89e98', fontSize: 13 }}>Prospect not found.</div>
         ) : editing ? (
 
-          /* ── Edit mode ── */
           <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={labelStyle}>First name *</label>
@@ -390,17 +485,14 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
                 <input style={inputStyle} value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} />
               </div>
             </div>
-
             <div>
               <label style={labelStyle}>Email *</label>
               <input style={inputStyle} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
             </div>
-
             <div>
               <label style={labelStyle}>Phone</label>
               <input style={inputStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="0400 000 000" />
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={labelStyle}>Engagement</label>
@@ -419,7 +511,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
                 </select>
               </div>
             </div>
-
             <div>
               <label style={labelStyle}>Source</label>
               <select style={inputStyle} value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))}>
@@ -431,7 +522,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
                 <option value="other">Other</option>
               </select>
             </div>
-
             <div>
               <label style={labelStyle}>Project interest</label>
               <select style={inputStyle} value={form.project} onChange={e => setForm(f => ({ ...f, project: e.target.value }))}>
@@ -439,7 +529,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={labelStyle}>Budget min</label>
@@ -452,7 +541,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
                   onChange={e => setForm(f => ({ ...f, budget_max: e.target.value }))} />
               </div>
             </div>
-
             <div>
               <label style={labelStyle}>Assigned to</label>
               <select style={inputStyle} value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}>
@@ -460,21 +548,18 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
                 {orgUsers.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
               </select>
             </div>
-
             <div>
               <label style={labelStyle}>Notes</label>
               <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 96 }} value={form.notes}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                 placeholder="Notes about this prospect…" />
             </div>
-
             {editError && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: '#fdf0ee', borderRadius: 8, border: '1px solid #f5c4bb' }}>
                 <AlertCircle size={13} color="#882010" />
                 <p style={{ fontSize: 12, color: '#882010', margin: 0 }}>{editError}</p>
               </div>
             )}
-
             <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
               <button onClick={() => {
                 if (!form.first_name || !form.last_name || !form.email) { setEditError('First name, last name and email are required.'); return }
@@ -498,10 +583,8 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
 
         ) : (
 
-          /* ── View mode ── */
           <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-            {/* Returning buyer alert */}
             {prospect.is_returning_buyer && prospect.returning_buyer_summary && (
               <div style={{ background: '#f5f0fb', border: '1px solid #d9c5f5', borderRadius: 10, padding: '12px 14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -516,7 +599,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
               </div>
             )}
 
-            {/* Identity card */}
             <div style={{ background: '#f9f6f4', borderRadius: 10, padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                 <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#c0533a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, color: '#fff', flexShrink: 0 }}>
@@ -542,14 +624,12 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
               </div>
             </div>
 
-            {/* Detail rows */}
             <div>
               <Row label="Source"           value={SOURCE_LABELS[prospect.source] ?? prospect.source} />
               <Row label="Engagement"       value={<EngagementBadge level={prospect.engagement_level} />} />
               <Row label="Purchase intent"  value={
                 prospect.purchase_intent === 'investor'       ? 'Investor' :
-                prospect.purchase_intent === 'owner_occupier' ? 'Owner occupier' :
-                '—'
+                prospect.purchase_intent === 'owner_occupier' ? 'Owner occupier' : '—'
               } />
               <Row label="Project interest" value={prospect.project_name ?? '—'} />
               <Row label="Lot interest"     value={prospect.lot_number ? `Lot ${prospect.lot_number}` : '—'} />
@@ -565,7 +645,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
               )}
             </div>
 
-            {/* Notes */}
             {prospect.notes && (
               <div style={{ background: '#f9f6f4', borderRadius: 10, padding: '12px 14px' }}>
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#a89e98', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Notes</p>
@@ -573,7 +652,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
               </div>
             )}
 
-            {/* Lost reason */}
             {prospect.status === 'lost' && prospect.lost_reason && (
               <div style={{ background: '#fdf0ee', border: '1px solid #f5c4bb', borderRadius: 10, padding: '12px 14px' }}>
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#a89e98', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Lost reason</p>
@@ -581,7 +659,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
               </div>
             )}
 
-            {/* Action error */}
             {actionError && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: '#fdf0ee', borderRadius: 8, border: '1px solid #f5c4bb' }}>
                 <AlertCircle size={13} color="#882010" />
@@ -589,7 +666,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
               </div>
             )}
 
-            {/* Mark as lost */}
             {prospect.status === 'active' && (
               <div>
                 {!showLostForm ? (
@@ -623,7 +699,6 @@ function ProspectDetailPanel({ prospectId, onClose }: { prospectId: string; onCl
               </div>
             )}
 
-            {/* Reactivate */}
             {prospect.status === 'lost' && (
               <button onClick={() => reactivate()} disabled={isReactivating} style={{
                 display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
@@ -667,7 +742,6 @@ function ProspectRow({ prospect, onClick }: { prospect: Prospect; onClick: () =>
       onMouseEnter={e => (e.currentTarget.style.background = '#faf8f7')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
-      {/* Name + email */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f7ece9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#c0533a', flexShrink: 0 }}>
           {prospect.first_name?.[0]}{prospect.last_name?.[0]}
@@ -684,28 +758,14 @@ function ProspectRow({ prospect, onClick }: { prospect: Prospect; onClick: () =>
           <span style={{ fontSize: 11, color: '#a89e98', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{prospect.email}</span>
         </div>
       </div>
-
-      {/* Project */}
       <span style={{ fontSize: 12, color: '#7a6e68', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {prospect.project_name ?? '—'}
       </span>
-
-      {/* Source */}
       <span style={{ fontSize: 12, color: '#7a6e68' }}>{SOURCE_LABELS[prospect.source] ?? prospect.source}</span>
-
-      {/* Engagement */}
       <EngagementBadge level={prospect.engagement_level} />
-
-      {/* Purchase intent */}
       <span style={{ fontSize: 12, color: intentLabel === '—' ? '#d4ccc5' : '#2c2420' }}>{intentLabel}</span>
-
-      {/* Budget */}
       <span style={{ fontSize: 12, color: budgetLabel === '—' ? '#d4ccc5' : '#2c2420' }}>{budgetLabel}</span>
-
-      {/* Status */}
       <StatusBadge status={prospect.status} />
-
-      {/* Arrow */}
       <ArrowRight size={14} color="#d4ccc5" />
     </div>
   )
@@ -749,7 +809,6 @@ export default function ProspectsPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f9f6f4' }}>
 
-      {/* Header */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e8e2dd', padding: '20px 24px', boxShadow: '0 1px 2px rgba(44,36,32,0.04)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
@@ -789,11 +848,8 @@ export default function ProspectsPage() {
         </div>
       </div>
 
-      {/* Table */}
       <div style={{ padding: 24 }}>
         <div style={{ background: '#fff', border: '1px solid #e8e2dd', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 2px rgba(44,36,32,0.06)' }}>
-
-          {/* Table header */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: '260px 1fr 100px 110px 120px 120px 90px 36px',

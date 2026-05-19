@@ -1,44 +1,56 @@
+// src/api/client.ts
+
 import axios from 'axios'
+import { useAuthStore } from '../store/authStore'
 
 const client = axios.create({
   baseURL: '/api/v1',
   withCredentials: true,
 })
 
-// Attach access token to every request
+// ─────────────────────────────────────────────────────────────────────────────
+// Request interceptor — attach access token from store
+// ─────────────────────────────────────────────────────────────────────────────
+
 client.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('access_token')
+  const token = useAuthStore.getState().accessToken
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
-  // Only set JSON content type if not FormData
   if (!(config.data instanceof FormData)) {
     config.headers['Content-Type'] = 'application/json'
   }
   return config
 })
 
-// On 401, try to refresh — if that fails, redirect to login
+// ─────────────────────────────────────────────────────────────────────────────
+// Response interceptor — on 401 clear auth and redirect to login
+// ─────────────────────────────────────────────────────────────────────────────
+
 client.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const original = error.config
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true
-      try {
-        const { data } = await axios.post('/api/v1/auth/token/refresh/', {}, {
-          withCredentials: true,
-        })
-        sessionStorage.setItem('access_token', data.access)
-        original.headers.Authorization = `Bearer ${data.access}`
-        return client(original)
-      } catch {
-        sessionStorage.removeItem('access_token')
-        window.location.href = '/login'
-      }
+  (error) => {
+    if (error.response?.status === 401) {
+      useAuthStore.getState().clearAuth()
+      window.location.href = '/login'
     }
     return Promise.reject(error)
   }
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Logout — calls backend to clear cookie then clears local state
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function logout(): Promise<void> {
+  try {
+    await axios.post('/api/v1/auth/logout/', {}, { withCredentials: true })
+  } catch {
+    // Ignore — proceed regardless
+  } finally {
+    useAuthStore.getState().clearAuth()
+    window.location.href = '/login'
+  }
+}
 
 export default client

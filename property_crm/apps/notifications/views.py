@@ -1,13 +1,11 @@
 """
 apps/notifications/views.py
 """
-
 from django.utils import timezone
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
 from .models import Notification
 
 
@@ -15,15 +13,26 @@ class NotificationSerializer(serializers.ModelSerializer):
     sale_id      = serializers.UUIDField(source="sale.id",                     read_only=True, allow_null=True)
     lot_number   = serializers.CharField(source="sale.lot.lot_number",         read_only=True, allow_null=True)
     project_name = serializers.CharField(source="sale.lot.stage.project.name", read_only=True, allow_null=True)
+    project_id   = serializers.SerializerMethodField()
 
     class Meta:
         model  = Notification
         fields = [
             "id", "notif_type", "title", "message",
-            "sale_id", "lot_number", "project_name",
+            "sale_id", "lot_number", "project_name", "project_id",
             "is_read", "read_at", "created_at",
         ]
         read_only_fields = fields
+
+    def get_project_id(self, obj):
+        # DA notification — project FK set directly on notification
+        if obj.project_id:
+            return str(obj.project_id)
+        # Sale notification — derive from sale -> lot -> stage -> project
+        try:
+            return str(obj.sale.lot.stage.project.id)
+        except AttributeError:
+            return None
 
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
@@ -37,7 +46,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
                 organisation=self.request.user.organisation,
                 recipient=self.request.user,
             )
-            .select_related("sale__lot__stage__project")
+            .select_related("sale__lot__stage__project", "project")
             .order_by("-created_at")
         )
 

@@ -74,8 +74,9 @@ class SaleViewSet(viewsets.ModelViewSet):
         org = request.user.organisation
 
         from apps.projects.models import Lot
-        from apps.contacts.models import Buyer, Agent, Referrer
+        from apps.contacts.models import Buyer, Agent, Referrer, Prospect
 
+        # ── Resolve lot ──────────────────────────────────────────────────────
         try:
             lot = Lot.objects.get(pk=d["lot_id"], stage__project__organisation=org)
         except Lot.DoesNotExist:
@@ -87,11 +88,30 @@ class SaleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # ── Resolve prospect → buyer ─────────────────────────────────────────
         try:
-            primary_buyer = Buyer.objects.get(pk=d["primary_buyer_id"], organisation=org)
-        except Buyer.DoesNotExist:
-            return Response({"error": "not_found", "detail": "Buyer not found."}, status=404)
+            prospect = Prospect.objects.get(pk=d["prospect_id"], organisation=org)
+        except Prospect.DoesNotExist:
+            return Response({"error": "not_found", "detail": "Prospect not found."}, status=404)
 
+        # Get existing buyer or create one from prospect data
+        if prospect.buyer_id:
+            primary_buyer = prospect.buyer
+        else:
+            primary_buyer, _ = Buyer.objects.get_or_create(
+                organisation=org,
+                email=prospect.email,
+                defaults={
+                    "first_name": prospect.first_name,
+                    "last_name":  prospect.last_name,
+                    "phone":      prospect.phone or "",
+                    "buyer_type": "individual",
+                }
+            )
+            prospect.buyer = primary_buyer
+            prospect.save(update_fields=["buyer"])
+
+        # ── Build kwargs ──────────────────────────────────────────────────────
         kwargs = {
             "cooling_off_waived": d.get("cooling_off_waived", False),
             "subject_to_finance": d.get("subject_to_finance", False),
@@ -104,6 +124,7 @@ class SaleViewSet(viewsets.ModelViewSet):
         if d.get("referrer_id"):
             kwargs["referrer"] = Referrer.objects.get(pk=d["referrer_id"], organisation=org)
 
+        # ── Create sale ───────────────────────────────────────────────────────
         sale = services.create_sale(
             lot=lot,
             primary_buyer=primary_buyer,
@@ -112,13 +133,21 @@ class SaleViewSet(viewsets.ModelViewSet):
             **kwargs,
         )
 
-        # ── Auto-convert prospect to purchaser ──────────────────────────
-        # Set converted_at on the primary buyer the first time a sale is
-        # created for them. Subsequent sales do not overwrite the date.
+        # ── Convert buyer and prospect ────────────────────────────────────────
         if primary_buyer.converted_at is None:
             primary_buyer.converted_at = timezone.now()
             primary_buyer.save(update_fields=["converted_at"])
-        # ─────────────────────────────────────────────────────────────────
+
+        try:
+            if hasattr(sale, 'prospect'):
+                sale.prospect = prospect
+                sale.save(update_fields=["prospect"])
+            prospect.status = "converted"
+            prospect.converted_at = timezone.now()
+            prospect.buyer = primary_buyer
+            prospect.save(update_fields=["status", "converted_at", "buyer"])
+        except Exception:
+            pass
 
         return Response(SaleSerializer(sale, context={"request": request}).data, status=status.HTTP_201_CREATED)
 

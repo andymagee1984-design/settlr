@@ -5,36 +5,18 @@ import { useNavigate } from 'react-router-dom'
 import { login, getMe } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Colour tokens
-// ─────────────────────────────────────────────────────────────────────────────
-// Slate:      #3d4a5c  (primary)
-// Slate dark: #2a3544  (deep)
-// Slate mid:  #4e5d72  (hover)
-// Terra:      #c0533a  (accent)
-// Terra dark: #a8472f  (hover)
-// Warm off-white: #f9f6f4
-// Window tint:    #e8ddd8
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Logo — full mark + wordmark
-// ─────────────────────────────────────────────────────────────────────────────
-
 function LandmarqLogo({ size = 1 }: { size?: number }) {
   const w = Math.round(246 * size)
   const h = Math.round(190 * size)
   return (
     <svg width={w} height={h} viewBox="0 0 246 190" role="img" aria-label="Landmarq">
       <title>Landmarq</title>
-      {/* Ground */}
       <rect x="0" y="157" width="246" height="3" rx="1.5" fill="#c0533a" opacity="0.3"/>
-      {/* Single dwelling */}
       <rect x="0" y="117" width="44" height="40" rx="2" fill="#3d4a5c" opacity="0.55"/>
       <polygon points="22,90 50,117 -6,117" fill="#3d4a5c" opacity="0.8"/>
       <rect x="15" y="133" width="14" height="24" rx="2" fill="#2a3544" opacity="0.7"/>
       <rect x="4" y="122" width="10" height="9" rx="1" fill="#e8ddd8" opacity="0.9"/>
       <rect x="34" y="94" width="5" height="12" rx="1" fill="#3d4a5c" opacity="0.6"/>
-      {/* Townhouses */}
       <rect x="52" y="98" width="28" height="59" rx="2" fill="#3d4a5c" opacity="0.65"/>
       <rect x="82" y="106" width="28" height="51" rx="2" fill="#3d4a5c" opacity="0.5"/>
       <rect x="52" y="93" width="28" height="7" rx="1" fill="#3d4a5c" opacity="0.4"/>
@@ -45,7 +27,6 @@ function LandmarqLogo({ size = 1 }: { size?: number }) {
       <rect x="86" y="110" width="9" height="8" rx="1" fill="#e8ddd8" opacity="0.7"/>
       <rect x="56" y="116" width="9" height="8" rx="1" fill="#e8ddd8" opacity="0.4"/>
       <rect x="86" y="118" width="9" height="8" rx="1" fill="#e8ddd8" opacity="0.4"/>
-      {/* Mid-rise */}
       <rect x="118" y="64" width="42" height="93" rx="2" fill="#3d4a5c" opacity="0.85"/>
       <rect x="118" y="57" width="42" height="9" rx="1" fill="#3d4a5c" opacity="0.5"/>
       <rect x="124" y="72" width="11" height="9" rx="1" fill="#e8ddd8" opacity="0.8"/>
@@ -57,7 +38,6 @@ function LandmarqLogo({ size = 1 }: { size?: number }) {
       <rect x="124" y="114" width="11" height="9" rx="1" fill="#e8ddd8" opacity="0.5"/>
       <rect x="139" y="114" width="11" height="9" rx="1" fill="#e8ddd8" opacity="0.8"/>
       <rect x="127" y="133" width="16" height="24" rx="2" fill="#2a3544" opacity="0.7"/>
-      {/* Hi-rise */}
       <rect x="168" y="16" width="50" height="141" rx="2" fill="#3d4a5c"/>
       <rect x="176" y="24" width="13" height="10" rx="1" fill="#e8ddd8" opacity="0.8"/>
       <rect x="193" y="24" width="13" height="10" rx="1" fill="#e8ddd8" opacity="0.3"/>
@@ -72,19 +52,13 @@ function LandmarqLogo({ size = 1 }: { size?: number }) {
       <rect x="176" y="99" width="13" height="10" rx="1" fill="#e8ddd8" opacity="0.5"/>
       <rect x="193" y="99" width="13" height="10" rx="1" fill="#e8ddd8" opacity="0.8"/>
       <rect x="179" y="132" width="18" height="25" rx="2" fill="#2a3544" opacity="0.75"/>
-      {/* Antenna */}
-      <line x1="193" y1="6" x2="193" y2="16" stroke="#c0533a" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="193" y1="6" x2="193" y2="16" stroke="#c0533a" strokeWidth="2.5" strokeLinecap="round"/>
       <circle cx="193" cy="5" r="3.5" fill="#c0533a"/>
-      {/* Tick badge */}
       <circle cx="231" cy="149" r="13" fill="#c0533a"/>
-      <polyline points="225,149 229,154 238,142" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="225,149 229,154 238,142" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Login page
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -95,16 +69,19 @@ export default function LoginPage() {
   const [loading, setLoading]   = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
+    console.log('handleSubmit called', email)
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
       const tokens = await login({ email, password })
-      sessionStorage.setItem('access_token', tokens.access)
-      const user = await getMe()
+      console.log('login success, fetching user')
+      const user = await getMe(tokens.access)
+      console.log('getMe success', user)
       setAuth(user, tokens.access)
       navigate('/')
-    } catch {
+    } catch (err) {
+      console.error('login error', err)
       setError('Invalid email or password.')
     } finally {
       setLoading(false)
@@ -114,7 +91,7 @@ export default function LoginPage() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', background: '#f9f6f4' }}>
 
-      {/* ── Left panel — branding ── */}
+      {/* Left panel — branding */}
       <div style={{
         flex: 1,
         background: '#2a3544',
@@ -126,13 +103,11 @@ export default function LoginPage() {
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* Subtle grid texture */}
         <div style={{
           position: 'absolute', inset: 0,
           backgroundImage: 'linear-gradient(rgba(232,221,216,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(232,221,216,0.03) 1px, transparent 1px)',
           backgroundSize: '48px 48px',
         }} />
-        {/* Warm glow */}
         <div style={{
           position: 'absolute',
           width: 500, height: 500,
@@ -142,11 +117,8 @@ export default function LoginPage() {
           transform: 'translate(-50%, -50%)',
           pointerEvents: 'none',
         }} />
-
         <div style={{ position: 'relative', textAlign: 'center' }}>
-          {/* Mark */}
           <LandmarqLogo size={0.95} />
-          {/* Wordmark */}
           <div style={{
             fontSize: 42, fontWeight: 700, letterSpacing: '-1.5px',
             color: '#f9f6f4', marginTop: 8, lineHeight: 1,
@@ -160,11 +132,9 @@ export default function LoginPage() {
             PROPERTY CRM
           </div>
           <p style={{
-            marginTop: 28,
-            fontSize: 14,
+            marginTop: 28, fontSize: 14,
             color: 'rgba(249,246,244,0.4)',
-            lineHeight: 1.7,
-            maxWidth: 300,
+            lineHeight: 1.7, maxWidth: 300,
           }}>
             The property CRM built for developers.<br />
             From first enquiry to final settlement.
@@ -172,15 +142,12 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── Right panel — form ── */}
+      {/* Right panel — form */}
       <div style={{
-        width: 460,
-        flexShrink: 0,
+        width: 460, flexShrink: 0,
         background: '#f9f6f4',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
         padding: '48px 48px',
         borderLeft: '1px solid #e8ddd8',
       }}>

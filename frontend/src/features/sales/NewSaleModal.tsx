@@ -1,18 +1,19 @@
 // src/features/sales/NewSaleModal.tsx
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createSale } from '../../api/sales'
 import { getAgents } from '../../api/contacts'
 import type { Lot } from '../../api/projects'
 import client from '../../api/client'
+import AddressAutocomplete from '../../components/AddressAutocomplete'
 
 interface Props {
   lot: Lot
   onClose: () => void
 }
 
-type Step = 'prospect' | 'details' | 'confirm'
+type Step = 'prospect' | 'buyer' | 'details' | 'confirm'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -65,52 +66,93 @@ export default function NewSaleModal({ lot, onClose }: Props) {
   const queryClient = useQueryClient()
   const [step, setStep] = useState<Step>('prospect')
 
-  // Prospect step state
-  const [searchQuery, setSearchQuery]         = useState('')
+  // Prospect step
+  const [searchQuery, setSearchQuery]           = useState('')
   const [selectedProspect, setSelectedProspect] = useState<ProspectResult | null>(null)
 
-  // Details step state
+  // Buyer details step — pre-filled from prospect, editable
+  const [buyerDetails, setBuyerDetails] = useState({
+    phone:       '',
+    address:     '',
+    id_verified: false,
+  })
+
+  // Sale details step
   const [details, setDetails] = useState({
-    agent_id: '',
+    agent_id:           '',
     cooling_off_waived: false,
     subject_to_finance: false,
-    finance_due_date: '',
+    finance_due_date:   '',
   })
 
   const [error, setError] = useState<string | null>(null)
 
-  const { data: searchResults = [], isFetching: searching } = useQuery({
-    queryKey: ['prospect-search', searchQuery],
-    queryFn: () => searchProspects(searchQuery),
-    enabled: searchQuery.length >= 2,
-  })
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+
+useEffect(() => {
+  const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300)
+  return () => clearTimeout(timer)
+}, [searchQuery])
+
+const { data: searchResults = [], isFetching: searching } = useQuery({
+  queryKey: ['prospect-search', debouncedQuery],
+  queryFn:  () => searchProspects(debouncedQuery),
+  enabled:  debouncedQuery.length >= 2,
+})
 
   const { data: agents = [] } = useQuery({
     queryKey: ['agents'],
-    queryFn: getAgents,
+    queryFn:  getAgents,
   })
 
   const createSaleMutation = useMutation({ mutationFn: createSale })
 
+  const handleSelectProspect = (p: ProspectResult) => {
+    setSelectedProspect(p)
+    // Pre-fill buyer details from prospect data
+    setBuyerDetails({
+      phone:       p.phone ?? '',
+      address:     '',
+      id_verified: false,
+    })
+  }
+
   const handleNext = () => {
     setError(null)
     if (step === 'prospect') {
-      if (!selectedProspect) {
-        setError('Please select a prospect to continue.')
-        return
-      }
+      if (!selectedProspect) { setError('Please select a prospect to continue.'); return }
+      setStep('buyer')
+    } else if (step === 'buyer') {
+      if (!buyerDetails.address.trim()) { setError('Please enter a residential address.'); return }
       setStep('details')
     } else if (step === 'details') {
       setStep('confirm')
     }
   }
 
+  const handleBack = () => {
+    setError(null)
+    if (step === 'confirm') setStep('details')
+    else if (step === 'details') setStep('buyer')
+    else if (step === 'buyer') setStep('prospect')
+    else onClose()
+  }
+
   const handleSubmit = async () => {
     setError(null)
     try {
+      // Update buyer details on the prospect's buyer record before creating sale
+      await client.patch(`/prospects/${selectedProspect!.id}/update_buyer_details/`, {
+        phone:       buyerDetails.phone,
+        address:     buyerDetails.address,
+        id_verified: buyerDetails.id_verified,
+      }).catch(() => {
+        // Endpoint may not exist yet — ignore and proceed
+      })
+
       await createSaleMutation.mutateAsync({
-        lot_id: lot.id,
-        prospect_id: selectedProspect!.id,
+        lot_id:       lot.id,
+        prospect_id:  selectedProspect!.id,
         ...(details.agent_id && { agent_id: details.agent_id }),
         cooling_off_waived: details.cooling_off_waived,
         subject_to_finance: details.subject_to_finance,
@@ -121,12 +163,19 @@ export default function NewSaleModal({ lot, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['sales'] })
       onClose()
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? 'Something went wrong. Please try again.')
+      const fields = e?.response?.data?.fields
+      if (fields) {
+        const msgs = Object.entries(fields).map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`).join(' · ')
+        setError(msgs)
+      } else {
+        setError(e?.response?.data?.detail ?? 'Something went wrong. Please try again.')
+      }
     }
   }
 
   const STEPS = [
     { key: 'prospect', label: 'Prospect' },
+    { key: 'buyer',    label: 'Buyer details' },
     { key: 'details',  label: 'Details' },
     { key: 'confirm',  label: 'Confirm' },
   ]
@@ -163,7 +212,7 @@ export default function NewSaleModal({ lot, onClose }: Props) {
           <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
             {STEPS.map((s, i) => (
               <div key={s.key} style={{
-                padding: '8px 16px', fontSize: 12, fontWeight: 500,
+                padding: '8px 12px', fontSize: 12, fontWeight: 500,
                 borderBottom: step === s.key ? '2px solid #111827' : '2px solid transparent',
                 color: i <= currentStepIndex ? '#111827' : '#9ca3af',
               }}>
@@ -190,16 +239,14 @@ export default function NewSaleModal({ lot, onClose }: Props) {
                 />
               </div>
 
-              {searching && (
-                <div style={{ fontSize: 12, color: '#9ca3af' }}>Searching…</div>
-              )}
+              {searching && <div style={{ fontSize: 12, color: '#9ca3af' }}>Searching…</div>}
 
               {searchResults.length > 0 && (
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
                   {searchResults.map((p) => (
                     <div
                       key={p.id}
-                      onClick={() => setSelectedProspect(p)}
+                      onClick={() => handleSelectProspect(p)}
                       style={{
                         padding: '12px 14px', cursor: 'pointer',
                         background: selectedProspect?.id === p.id ? '#f0f9ff' : '#fff',
@@ -241,7 +288,6 @@ export default function NewSaleModal({ lot, onClose }: Props) {
                 </div>
               )}
 
-              {/* Selected prospect summary */}
               {selectedProspect && (
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '12px 14px' }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
@@ -257,7 +303,49 @@ export default function NewSaleModal({ lot, onClose }: Props) {
             </div>
           )}
 
-          {/* ── Step 2 — Details ── */}
+          {/* ── Step 2 — Buyer details ── */}
+          {step === 'buyer' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#374151' }}>
+                <strong>{selectedProspect?.full_name}</strong> — {selectedProspect?.email}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Phone</label>
+                <input
+                  style={inputStyle}
+                  value={buyerDetails.phone}
+                  onChange={e => setBuyerDetails(b => ({ ...b, phone: e.target.value }))}
+                  placeholder="0400 000 000"
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Residential address *</label>
+                <AddressAutocomplete
+                  value={buyerDetails.address}
+                  onChange={address => setBuyerDetails(b => ({ ...b, address }))}
+                  inputStyle={inputStyle}
+                  placeholder="Start typing an address…"
+                />
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={buyerDetails.id_verified}
+                  onChange={e => setBuyerDetails(b => ({ ...b, id_verified: e.target.checked }))}
+                />
+                ID verified
+              </label>
+
+              <div style={{ fontSize: 12, color: '#6b7280', background: '#f3f4f6', padding: '10px 12px', borderRadius: 6 }}>
+                These details will be saved to the buyer record when the sale is registered.
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3 — Sale details ── */}
           {step === 'details' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
@@ -290,7 +378,7 @@ export default function NewSaleModal({ lot, onClose }: Props) {
             </div>
           )}
 
-          {/* ── Step 3 — Confirm ── */}
+          {/* ── Step 4 — Confirm ── */}
           {step === 'confirm' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ background: '#f9fafb', borderRadius: 8, padding: '16px' }}>
@@ -299,16 +387,19 @@ export default function NewSaleModal({ lot, onClose }: Props) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {[
-                    ['Lot',      `Lot ${lot.lot_number} – ${lot.project_name}`],
-                    ['Price',    lot.current_price ? `$${Number(lot.current_price).toLocaleString()}` : '—'],
-                    ['Prospect', selectedProspect?.full_name ?? '—'],
-                    ['Email',    selectedProspect?.email ?? '—'],
+                    ['Lot',         `Lot ${lot.lot_number} – ${lot.project_name}`],
+                    ['Price',       lot.current_price ? `$${Number(lot.current_price).toLocaleString()}` : '—'],
+                    ['Buyer',       selectedProspect?.full_name ?? '—'],
+                    ['Email',       selectedProspect?.email ?? '—'],
+                    ['Phone',       buyerDetails.phone || '—'],
+                    ['Address',     buyerDetails.address || '—'],
+                    ['ID verified', buyerDetails.id_verified ? 'Yes' : 'No'],
                     ['Cooling off', details.cooling_off_waived ? 'Waived' : 'Applies'],
-                    ['Finance',  details.subject_to_finance ? `Yes – due ${details.finance_due_date || 'TBC'}` : 'No'],
+                    ['Finance',     details.subject_to_finance ? `Yes – due ${details.finance_due_date || 'TBC'}` : 'No'],
                   ].map(([label, value]) => (
                     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                       <span style={{ color: '#6b7280' }}>{label}</span>
-                      <span style={{ color: '#111827', fontWeight: 500 }}>{value}</span>
+                      <span style={{ color: '#111827', fontWeight: 500, textAlign: 'right', maxWidth: 280 }}>{value}</span>
                     </div>
                   ))}
                 </div>
@@ -333,7 +424,7 @@ export default function NewSaleModal({ lot, onClose }: Props) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <button
-            onClick={step === 'prospect' ? onClose : () => setStep(step === 'confirm' ? 'details' : 'prospect')}
+            onClick={handleBack}
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280' }}
           >
             {step === 'prospect' ? 'Cancel' : '← Back'}

@@ -1,13 +1,5 @@
 """
 apps/projects/models.py
-
-Project, ProjectMedia, Stage, Lot, LotPriceHistory.
-
-Key design decisions (from 04_django_models.md):
-- Lot.status is a derived @property — no stored status field.
-- Lot.is_released encodes Draft vs Available (can't be derived from a Sale).
-- LotManager.with_status() annotates querysets for filtering by status.
-- Stage and Lot are tenant-scoped via parent chain — no direct organisation FK.
 """
 
 import uuid
@@ -16,10 +8,6 @@ from django.db.models import Q, Subquery, OuterRef, Value, Case, When
 
 from apps.core.models import OrgScopedModel, TimeStampedModel
 
-
-# ---------------------------------------------------------------------------
-# Project
-# ---------------------------------------------------------------------------
 
 class Project(OrgScopedModel):
 
@@ -48,12 +36,18 @@ class Project(OrgScopedModel):
         help_text="The developer's legal representative for this project",
     )
 
-    # Billing — set automatically on activation / final settlement
+    # Billing
     billing_lot_count  = models.PositiveIntegerField(null=True, blank=True, help_text="Locked at activation")
     billing_start_date = models.DateField(null=True, blank=True)
     billing_end_date   = models.DateField(null=True, blank=True)
     billing_status     = models.CharField(max_length=20, choices=BillingStatus.choices, default=BillingStatus.ACTIVE)
-    amenities = models.JSONField(default=list, blank=True)
+    amenities          = models.JSONField(default=list, blank=True)
+
+    # Feasibility — committed from DA module
+    target_gr          = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text="Target gross revenue committed from DA feasibility",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -63,10 +57,6 @@ class Project(OrgScopedModel):
         return self.name
 
     def activate(self):
-        """
-        Called by the platform team when a project goes live.
-        Locks billing_lot_count and sets billing_start_date.
-        """
         from datetime import date
         if self.status == self.Status.DRAFT:
             self.billing_lot_count  = self.lots_count()
@@ -78,10 +68,6 @@ class Project(OrgScopedModel):
         return Lot.objects.filter(stage__project=self).count()
 
     def check_billing_complete(self):
-        """
-        Called after each lot settles. If no unsettled lots remain,
-        sets billing_end_date and marks the project completed.
-        """
         from datetime import date
         from apps.sales.models import Sale
         unsettled = (
@@ -96,10 +82,6 @@ class Project(OrgScopedModel):
             self.status           = self.Status.COMPLETED
             self.save(update_fields=["billing_end_date", "billing_status", "status"])
 
-
-# ---------------------------------------------------------------------------
-# ProjectMedia
-# ---------------------------------------------------------------------------
 
 class ProjectMedia(TimeStampedModel):
 
@@ -119,7 +101,7 @@ class ProjectMedia(TimeStampedModel):
     project     = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="media")
     media_type  = models.CharField(max_length=20, choices=MediaType.choices)
     category    = models.CharField(max_length=20, choices=Category.choices)
-    title = models.CharField(max_length=255, blank=True)
+    title       = models.CharField(max_length=255, blank=True)
     file        = models.FileField(upload_to="project_media/")
     sort_order  = models.PositiveIntegerField(default=0)
     uploaded_by = models.ForeignKey(
@@ -136,16 +118,7 @@ class ProjectMedia(TimeStampedModel):
         return f"{self.project} — {self.title}"
 
 
-# ---------------------------------------------------------------------------
-# Stage
-# ---------------------------------------------------------------------------
-
 class Stage(TimeStampedModel):
-    """
-    Tenant-scoped via Project -> Organisation chain.
-    No direct organisation FK.
-    """
-
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project          = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="stages")
     name             = models.CharField(max_length=100)
@@ -153,16 +126,12 @@ class Stage(TimeStampedModel):
     expected_release = models.DateField(null=True, blank=True)
 
     class Meta:
-        ordering = ["project", "stage_number"]
+        ordering        = ["project", "stage_number"]
         unique_together = [("project", "stage_number")]
 
     def __str__(self):
         return f"{self.project} — {self.name}"
 
-
-# ---------------------------------------------------------------------------
-# Lot status choices (used by both the @property and the annotated queryset)
-# ---------------------------------------------------------------------------
 
 class LotStatus(models.TextChoices):
     DRAFT     = "draft",     "Draft"
@@ -172,25 +141,11 @@ class LotStatus(models.TextChoices):
     SETTLED   = "settled",   "Settled"
 
 
-# ---------------------------------------------------------------------------
-# Lot manager
-# ---------------------------------------------------------------------------
-
 class LotManager(models.Manager):
 
     def with_status(self):
-        """
-        Annotates each Lot row with computed_status for queryset filtering.
-        Use for list endpoints that filter by status.
-        Never filter on lot.status in a queryset — it is a Python property.
-
-        Two-step annotate pattern:
-          1. active_sale_status — subquery for the active sale's status string.
-          2. computed_status    — Case/When on active_sale_status + is_released.
-        """
         from apps.sales.models import Sale
 
-        # Step 1: subquery returns the status string of the one active sale (if any)
         active_sale_sq = Subquery(
             Sale.objects
             .filter(lot=OuterRef("pk"))
@@ -200,7 +155,6 @@ class LotManager(models.Manager):
 
         qs = self.get_queryset().annotate(active_sale_status=active_sale_sq)
 
-        # Step 2: map (is_released, active_sale_status) -> computed_status
         qs = qs.annotate(
             computed_status=Case(
                 When(is_released=False, then=Value(LotStatus.DRAFT)),
@@ -234,16 +188,7 @@ class LotManager(models.Manager):
         return qs
 
 
-# ---------------------------------------------------------------------------
-# Lot
-# ---------------------------------------------------------------------------
-
 class Lot(TimeStampedModel):
-    """
-    The core asset. Tenant-scoped via Stage -> Project -> Organisation.
-    status is a derived @property — never stored.
-    is_released encodes Draft vs Available.
-    """
 
     class LotType(models.TextChoices):
         LAND           = "land",           "Land"
@@ -256,20 +201,16 @@ class Lot(TimeStampedModel):
     stage          = models.ForeignKey(Stage, on_delete=models.CASCADE, related_name="lots")
     lot_number     = models.CharField(max_length=50)
     lot_type       = models.CharField(max_length=30, choices=LotType.choices)
-    is_released    = models.BooleanField(
-        default=False,
-        help_text="False=Draft, True=Available (when no active sale)",
-    )
+    is_released    = models.BooleanField(default=False)
 
-    # Specifications
     bedrooms       = models.PositiveSmallIntegerField(null=True, blank=True)
     bathrooms      = models.PositiveSmallIntegerField(null=True, blank=True)
     car_spaces     = models.PositiveSmallIntegerField(null=True, blank=True)
     land_area      = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="m²")
     floor_area     = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="m²")
     aspect         = models.CharField(max_length=50, blank=True)
-    level          = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Apartments")
-    building       = models.CharField(max_length=100, blank=True, help_text="Apartments / multi-building")
+    level          = models.PositiveSmallIntegerField(null=True, blank=True)
+    building       = models.CharField(max_length=100, blank=True)
     inclusions     = models.TextField(blank=True)
     floor_plan_url = models.URLField(blank=True)
 
@@ -284,10 +225,6 @@ class Lot(TimeStampedModel):
 
     @property
     def status(self) -> str:
-        """
-        Derive lot status from is_released and the active Sale's status.
-        Single-instance access only — use .with_status() for querysets.
-        """
         if not self.is_released:
             return LotStatus.DRAFT
 
@@ -314,18 +251,11 @@ class Lot(TimeStampedModel):
 
     @property
     def current_price(self):
-        """Returns the most recent LotPriceHistory price, or None."""
         record = self.price_history.order_by("-effective_date", "-created_at").first()
         return record.price if record else None
 
 
-# ---------------------------------------------------------------------------
-# LotPriceHistory
-# ---------------------------------------------------------------------------
-
 class LotPriceHistory(TimeStampedModel):
-    """Every price change on a Lot. Current price = most recent record."""
-
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     lot            = models.ForeignKey(Lot, on_delete=models.CASCADE, related_name="price_history")
     price          = models.DecimalField(max_digits=12, decimal_places=2)
@@ -343,57 +273,18 @@ class LotPriceHistory(TimeStampedModel):
 
     def __str__(self):
         return f"{self.lot} — ${self.price} from {self.effective_date}"
-    """
-ADD TO: apps/projects/models.py
-
-Add these two models after the LotPriceHistory model.
-Then run: python manage.py makemigrations projects
-"""
-
-import uuid
-from django.db import models
 
 
 class ProjectAgency(models.Model):
-    """
-    Grants an Agency access to sell lots within a Project.
-    Managed by the developer via the Project detail page (Agencies tab).
-
-    An agency with project-level access can see and sell any lot in the project
-    that does not have a LotAgency exclusive assignment to a different agency.
-
-    Constraints:
-    - Unique on (project, agency) — an agency can only be assigned once per project
-    - Cannot be deleted if the agency has active sales on this project
-    """
-
-    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    project      = models.ForeignKey(
-        "projects.Project",
-        on_delete=models.CASCADE,
-        related_name="project_agencies",
-    )
-    agency       = models.ForeignKey(
-        "contacts.Agency",
-        on_delete=models.CASCADE,
-        related_name="project_agencies",
-    )
-    assigned_by  = models.ForeignKey(
-        "users.User",
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="+",
-    )
-    assigned_at  = models.DateTimeField(auto_now_add=True)
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project     = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="project_agencies")
+    agency      = models.ForeignKey("contacts.Agency", on_delete=models.CASCADE, related_name="project_agencies")
+    assigned_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="+")
+    assigned_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["project", "agency"],
-                name="unique_agency_per_project",
-            )
-        ]
-        ordering = ["assigned_at"]
+        constraints = [models.UniqueConstraint(fields=["project", "agency"], name="unique_agency_per_project")]
+        ordering     = ["assigned_at"]
         verbose_name = "Project agency"
         verbose_name_plural = "Project agencies"
 
@@ -402,50 +293,14 @@ class ProjectAgency(models.Model):
 
 
 class LotAgency(models.Model):
-    """
-    Exclusively assigns a Lot to one Agency.
-
-    When set, ALL other agencies lose visibility of this lot immediately,
-    regardless of their ProjectAgency access. The lot simply does not appear
-    in their view — it is not shown as unavailable, it is absent entirely.
-
-    Constraints:
-    - Unique on lot — only one exclusive agency per lot at any time
-    - The assigned agency must have ProjectAgency access for the lot's project
-    - Cannot be created if the lot has an active sale by a different agency
-      (system blocks assignment — developer must resolve the sale first)
-
-    Lot visibility logic for agency users:
-        Show lot if:
-            1. LotAgency exists for this lot AND agency == this agency
-            OR
-            2. No LotAgency exists for this lot AND ProjectAgency exists for this agency+project
-
-        Hide lot if:
-            - LotAgency exists for this lot AND agency != this agency
-    """
-
     id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    lot         = models.OneToOneField(
-        "projects.Lot",
-        on_delete=models.CASCADE,
-        related_name="lot_agency",
-    )
-    agency      = models.ForeignKey(
-        "contacts.Agency",
-        on_delete=models.CASCADE,
-        related_name="exclusive_lots",
-    )
-    assigned_by = models.ForeignKey(
-        "users.User",
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="+",
-    )
+    lot         = models.OneToOneField("projects.Lot", on_delete=models.CASCADE, related_name="lot_agency")
+    agency      = models.ForeignKey("contacts.Agency", on_delete=models.CASCADE, related_name="exclusive_lots")
+    assigned_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="+")
     assigned_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["assigned_at"]
+        ordering     = ["assigned_at"]
         verbose_name = "Lot agency (exclusive)"
         verbose_name_plural = "Lot agencies (exclusive)"
 
@@ -466,28 +321,39 @@ class DevelopmentApplication(models.Model):
         CONDITIONS_ISSUED = "conditions_issued", "Conditions Issued"
         OPERATIONAL_WORKS = "operational_works", "Operational Works"
 
-    id                     = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    project                = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="development_applications")
-    stage                  = models.ForeignKey("projects.Stage", on_delete=models.SET_NULL, null=True, blank=True, related_name="development_applications")
-    reference_number       = models.CharField(max_length=100, blank=True)
-    authority              = models.CharField(max_length=255, blank=True)
-    status                 = models.CharField(max_length=30, choices=Status.choices, default=Status.PRE_LODGEMENT)
-    lodgement_date         = models.DateField(null=True, blank=True)
-    approval_date          = models.DateField(null=True, blank=True)
-    lapse_date             = models.DateField(null=True, blank=True)
-    commencement_confirmed = models.BooleanField(default=False)
-    commencement_date      = models.DateField(null=True, blank=True)
-    notes                  = models.TextField(blank=True)
-    created_at             = models.DateTimeField(auto_now_add=True)
-    updated_at             = models.DateTimeField(auto_now=True)
+    id                      = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project                 = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="development_applications")
+    stage                   = models.ForeignKey("projects.Stage", on_delete=models.SET_NULL, null=True, blank=True, related_name="development_applications")
+    reference_number        = models.CharField(max_length=100, blank=True)
+    authority               = models.CharField(max_length=255, blank=True)
+    status                  = models.CharField(max_length=30, choices=Status.choices, default=Status.PRE_LODGEMENT)
+    lodgement_date          = models.DateField(null=True, blank=True)
+    approval_date           = models.DateField(null=True, blank=True)
+    lapse_date              = models.DateField(null=True, blank=True)
+    commencement_confirmed  = models.BooleanField(default=False)
+    commencement_date       = models.DateField(null=True, blank=True)
+    notes                   = models.TextField(blank=True)
+    created_at              = models.DateTimeField(auto_now_add=True)
+    updated_at              = models.DateTimeField(auto_now=True)
+    created_by              = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="development_applications")
+    owner                   = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_das")
+    last_notified_at        = models.DateTimeField(null=True, blank=True)
+
+    # Feasibility
+    feasibility             = models.JSONField(
+        default=dict, blank=True,
+        help_text="Feasibility model: {lines: [{lot_type, planned_count, avg_size_sqm, rate_per_sqm}], notes: str}",
+    )
+    feasibility_committed   = models.BooleanField(default=False)
+    feasibility_committed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering     = ["-created_at"]
         verbose_name = "Development Application"
         verbose_name_plural = "Development Applications"
 
     def __str__(self):
-        ref = self.reference_number or "No reference"
+        ref   = self.reference_number or "No reference"
         stage = f" - {self.stage.name}" if self.stage else ""
         return f"{self.project.name}{stage} - {ref}"
 
@@ -505,6 +371,57 @@ class DevelopmentApplication(models.Model):
             return None
         from django.utils import timezone
         return (self.lapse_date - timezone.now().date()).days
+
+    def get_feasibility_totals(self):
+        """Returns computed totals from the active scenario."""
+        scenarios = (self.feasibility or {}).get("scenarios", [])
+        # Support legacy flat format too
+        if not scenarios:
+            lines = (self.feasibility or {}).get("lines", [])
+        else:
+            active = next((s for s in scenarios if s.get("is_active")), scenarios[0] if scenarios else None)
+            lines = active.get("lines", []) if active else []
+        total_lots = 0
+        total_gr   = 0
+        for line in lines:
+            count   = int(line.get("planned_count") or 0)
+            size    = float(line.get("avg_size_sqm") or 0)
+            rate    = float(line.get("rate_per_sqm") or 0)
+            total_lots += count
+            total_gr   += count * size * rate
+        return {"total_lots": total_lots, "total_gr": round(total_gr, 2)}
+
+    def get_all_scenario_totals(self):
+        """Returns totals for every scenario — used by the comparison charts."""
+        scenarios = (self.feasibility or {}).get("scenarios", [])
+        result = []
+        for s in scenarios:
+            lines = s.get("lines", [])
+            total_lots = 0
+            total_gr   = 0
+            lot_type_breakdown = {}
+            for line in lines:
+                count = int(line.get("planned_count") or 0)
+                size  = float(line.get("avg_size_sqm") or 0)
+                rate  = float(line.get("rate_per_sqm") or 0)
+                gr    = count * size * rate
+                lt    = line.get("lot_type", "other")
+                total_lots += count
+                total_gr   += gr
+                if lt not in lot_type_breakdown:
+                    lot_type_breakdown[lt] = {"count": 0, "gr": 0, "rate": rate}
+                lot_type_breakdown[lt]["count"] += count
+                lot_type_breakdown[lt]["gr"]    += gr
+                lot_type_breakdown[lt]["rate"]   = rate
+            result.append({
+                "id":        s.get("id"),
+                "name":      s.get("name", "Unnamed"),
+                "is_active": s.get("is_active", False),
+                "total_lots": total_lots,
+                "total_gr":   round(total_gr, 2),
+                "breakdown":  lot_type_breakdown,
+            })
+        return result
 
 
 class DACondition(models.Model):
@@ -532,9 +449,10 @@ class DACondition(models.Model):
     notes             = models.TextField(blank=True)
     created_at        = models.DateTimeField(auto_now_add=True)
     updated_at        = models.DateTimeField(auto_now=True)
+    last_notified_at  = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["condition_number", "created_at"]
+        ordering     = ["condition_number", "created_at"]
         verbose_name = "DA Condition"
         verbose_name_plural = "DA Conditions"
 
@@ -557,17 +475,18 @@ class DAMilestone(models.Model):
         DEFECTS_LIABILITY_END = "defects_liability_end", "Defects Liability End"
         CUSTOM                = "custom",                "Custom"
 
-    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    da             = models.ForeignKey(DevelopmentApplication, on_delete=models.CASCADE, related_name="milestones")
-    milestone_type = models.CharField(max_length=30, choices=MilestoneType.choices)
-    label          = models.CharField(max_length=100, blank=True)
-    planned_date   = models.DateField(null=True, blank=True)
-    actual_date    = models.DateField(null=True, blank=True)
-    notes          = models.TextField(blank=True)
-    created_at     = models.DateTimeField(auto_now_add=True)
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    da               = models.ForeignKey(DevelopmentApplication, on_delete=models.CASCADE, related_name="milestones")
+    milestone_type   = models.CharField(max_length=30, choices=MilestoneType.choices)
+    label            = models.CharField(max_length=100, blank=True)
+    planned_date     = models.DateField(null=True, blank=True)
+    actual_date      = models.DateField(null=True, blank=True)
+    notes            = models.TextField(blank=True)
+    created_at       = models.DateTimeField(auto_now_add=True)
+    last_notified_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["planned_date", "milestone_type"]
+        ordering     = ["planned_date", "milestone_type"]
         verbose_name = "DA Milestone"
         verbose_name_plural = "DA Milestones"
 
@@ -587,3 +506,99 @@ class DAMilestone(models.Model):
             return False
         from django.utils import timezone
         return self.planned_date < timezone.now().date()
+
+
+class DADocument(models.Model):
+    class Category(models.TextChoices):
+        DECISION_NOTICE    = "decision_notice",    "Decision Notice"
+        APPROVED_PLANS     = "approved_plans",     "Approved Plans"
+        CONDITION_SCHEDULE = "condition_schedule", "Condition Schedule"
+        REFERRAL_RESPONSE  = "referral_response",  "Referral Response"
+        CORRESPONDENCE     = "correspondence",     "Correspondence"
+        OTHER              = "other",              "Other"
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    da          = models.ForeignKey(DevelopmentApplication, on_delete=models.CASCADE, related_name="documents")
+    category    = models.CharField(max_length=30, choices=Category.choices, default=Category.OTHER)
+    title       = models.CharField(max_length=255, blank=True)
+    file        = models.FileField(upload_to="da_documents/")
+    uploaded_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="+")
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering     = ["category", "created_at"]
+        verbose_name = "DA Document"
+        verbose_name_plural = "DA Documents"
+
+    def __str__(self):
+        return f"{self.da} — {self.title or self.get_category_display()}"
+
+    @property
+    def file_url(self):
+        return self.file.url if self.file else None
+
+    @property
+    def filename(self):
+        return self.file.name.split("/")[-1] if self.file else None
+
+
+class DAComment(models.Model):
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    da         = models.ForeignKey(DevelopmentApplication, on_delete=models.CASCADE, related_name="comments")
+    body       = models.TextField()
+    created_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering     = ["created_at"]
+        verbose_name = "DA Comment"
+        verbose_name_plural = "DA Comments"
+
+    def __str__(self):
+        return f"{self.da} — comment by {self.created_by}"
+
+
+class ConditionComment(models.Model):
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    condition  = models.ForeignKey(DACondition, on_delete=models.CASCADE, related_name="comments")
+    body       = models.TextField()
+    created_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering     = ["created_at"]
+        verbose_name = "Condition Comment"
+        verbose_name_plural = "Condition Comments"
+
+    def __str__(self):
+        return f"{self.condition} — comment by {self.created_by}"
+
+
+class DAActivityLog(models.Model):
+    class EventType(models.TextChoices):
+        STATUS_CHANGED           = "status_changed",           "Status Changed"
+        CONDITION_STATUS_CHANGED = "condition_status_changed", "Condition Status Changed"
+        CONDITION_ADDED          = "condition_added",          "Condition Added"
+        MILESTONE_ADDED          = "milestone_added",          "Milestone Added"
+        MILESTONE_UPDATED        = "milestone_updated",        "Milestone Updated"
+        DOCUMENT_UPLOADED        = "document_uploaded",        "Document Uploaded"
+        DOCUMENT_DELETED         = "document_deleted",         "Document Deleted"
+        OWNER_ASSIGNED           = "owner_assigned",           "Owner Assigned"
+        COMMENT_ADDED            = "comment_added",            "Comment Added"
+        FEASIBILITY_UPDATED      = "feasibility_updated",      "Feasibility Updated"
+        FEASIBILITY_COMMITTED    = "feasibility_committed",    "Feasibility Committed"
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    da          = models.ForeignKey(DevelopmentApplication, on_delete=models.CASCADE, related_name="activity_log")
+    event_type  = models.CharField(max_length=50, choices=EventType.choices)
+    description = models.TextField()
+    created_by  = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="+")
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering     = ["created_at"]
+        verbose_name = "DA Activity Log"
+        verbose_name_plural = "DA Activity Logs"
+
+    def __str__(self):
+        return f"{self.da} — {self.get_event_type_display()} at {self.created_at}"

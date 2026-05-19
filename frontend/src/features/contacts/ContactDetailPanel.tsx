@@ -7,6 +7,8 @@ import { getActivities, createActivity, completeActivity } from '../../api/activ
 import { getSalesByBuyer } from '../../api/sales'
 import type { Activity } from '../../api/activities'
 import type { Buyer } from '../../api/contacts'
+import AddressAutocomplete from '../../components/AddressAutocomplete'
+import client from '../../api/client'
 
 interface Props {
   contactId: string
@@ -119,6 +121,7 @@ function ProspectEditForm({ buyer, onSave, onCancel }: {
   onCancel: () => void
 }) {
   const [form, setForm] = useState({
+    address:            buyer.address ?? '',
     interest_level:     buyer.interest_level ?? '',
     budget_min:         buyer.budget_min?.toString() ?? '',
     budget_max:         buyer.budget_max?.toString() ?? '',
@@ -132,6 +135,7 @@ function ProspectEditForm({ buyer, onSave, onCancel }: {
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => updateBuyer(buyer.id, {
+      address:            form.address,
       interest_level:     form.interest_level || undefined,
       budget_min:         form.budget_min ? parseFloat(form.budget_min) : null,
       budget_max:         form.budget_max ? parseFloat(form.budget_max) : null,
@@ -147,6 +151,17 @@ function ProspectEditForm({ buyer, onSave, onCancel }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Address with autocomplete */}
+      <div>
+        <label style={labelStyle}>Residential address</label>
+        <AddressAutocomplete
+          value={form.address}
+          onChange={(address) => setForm({ ...form, address })}
+          inputStyle={inputStyle}
+          placeholder="Start typing an address…"
+        />
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
           <label style={labelStyle}>Interest level</label>
@@ -209,6 +224,89 @@ function ProspectEditForm({ buyer, onSave, onCancel }: {
             onChange={e => setForm({ ...form, marketing_opt_in: e.target.checked })} />
           Marketing opt-in
         </label>
+      </div>
+      {error && <div style={{ fontSize: 12, color: '#dc2626' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => mutate()} disabled={isPending} style={{
+          padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+          background: '#111827', color: '#fff', border: 'none', cursor: 'pointer',
+          opacity: isPending ? 0.6 : 1,
+        }}>
+          {isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={onCancel} style={{
+          padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+          background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
+        }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Solicitor edit form
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SolicitorEditForm({ solicitor, onSave, onCancel }: {
+  solicitor: any
+  onSave: () => void
+  onCancel: () => void
+}) {
+  const [form, setForm] = useState({
+    first_name: solicitor.first_name ?? '',
+    last_name:  solicitor.last_name ?? '',
+    firm_name:  solicitor.firm_name ?? '',
+    email:      solicitor.email ?? '',
+    phone:      solicitor.phone ?? '',
+    address:    solicitor.address ?? '',
+  })
+  const [error, setError] = useState<string | null>(null)
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => client.patch(`/solicitors/${solicitor.id}/`, form).then(r => r.data),
+    onSuccess: () => onSave(),
+    onError:   (e: any) => setError(e?.response?.data?.detail ?? 'Save failed'),
+  })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div>
+          <label style={labelStyle}>First name</label>
+          <input style={inputStyle} value={form.first_name}
+            onChange={e => setForm({ ...form, first_name: e.target.value })} />
+        </div>
+        <div>
+          <label style={labelStyle}>Last name</label>
+          <input style={inputStyle} value={form.last_name}
+            onChange={e => setForm({ ...form, last_name: e.target.value })} />
+        </div>
+        <div>
+          <label style={labelStyle}>Firm name</label>
+          <input style={inputStyle} value={form.firm_name}
+            onChange={e => setForm({ ...form, firm_name: e.target.value })} />
+        </div>
+        <div>
+          <label style={labelStyle}>Email</label>
+          <input style={inputStyle} type="email" value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })} />
+        </div>
+        <div>
+          <label style={labelStyle}>Phone</label>
+          <input style={inputStyle} value={form.phone}
+            onChange={e => setForm({ ...form, phone: e.target.value })} />
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Address</label>
+        <AddressAutocomplete
+          value={form.address}
+          onChange={(address) => setForm({ ...form, address })}
+          inputStyle={inputStyle}
+          placeholder="Start typing an address…"
+        />
       </div>
       {error && <div style={{ fontSize: 12, color: '#dc2626' }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
@@ -313,7 +411,7 @@ function LogActivityForm({ contactId, contactType, onSaved }: {
             <option value="">No sale</option>
             {buyerSales.map((s: any) => (
               <option key={s.id} value={s.id}>
-                Lot {s.lot_number} — {s.project_name} ({s.status.replace(/_/g, ' ')})
+                Lot {s.lot_number} – {s.project_name} ({s.status.replace(/_/g, ' ')})
               </option>
             ))}
           </select>
@@ -385,7 +483,6 @@ function ProspectInfo({ contactId }: { contactId: string }) {
 
   return (
     <>
-      {/* Conversion status banner */}
       {buyer.is_converted ? (
         <div style={{
           background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8,
@@ -409,7 +506,6 @@ function ProspectInfo({ contactId }: { contactId: string }) {
         </div>
       )}
 
-      {/* Contact details */}
       <Section title="Contact details">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <Field label="Name"  value={buyer.display_name} />
@@ -424,7 +520,6 @@ function ProspectInfo({ contactId }: { contactId: string }) {
         </div>
       </Section>
 
-      {/* Prospect profile */}
       <Section
         title="Prospect profile"
         action={!editing ? (
@@ -461,7 +556,7 @@ function ProspectInfo({ contactId }: { contactId: string }) {
               <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>Budget</div>
               <div style={{ fontSize: 13, color: '#111827', fontWeight: 500 }}>
                 {(buyer.budget_min || buyer.budget_max)
-                  ? `${fmt(buyer.budget_min)} – ${fmt(buyer.budget_max)}`
+                  ? `${fmt(buyer.budget_min)} — ${fmt(buyer.budget_max)}`
                   : '—'}
               </div>
             </div>
@@ -518,20 +613,49 @@ function AgentInfo({ contactId }: { contactId: string }) {
 }
 
 function SolicitorInfo({ contactId }: { contactId: string }) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+
   const { data: solicitor } = useQuery({
     queryKey: ['solicitor', contactId],
     queryFn:  () => getSolicitor(contactId),
   })
+
   if (!solicitor) return <div style={{ color: '#9ca3af', fontSize: 13 }}>Loading…</div>
+
+  const handleSave = () => {
+    setEditing(false)
+    queryClient.invalidateQueries({ queryKey: ['solicitor', contactId] })
+    queryClient.invalidateQueries({ queryKey: ['solicitors'] })
+  }
+
   return (
-    <Section title="Solicitor details">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label="Name"    value={`${solicitor.first_name} ${solicitor.last_name}`} />
-        <Field label="Firm"    value={solicitor.firm_name} />
-        <Field label="Email"   value={solicitor.email} />
-        <Field label="Phone"   value={solicitor.phone} />
-        <Field label="Address" value={solicitor.address} />
-      </div>
+    <Section
+      title="Solicitor details"
+      action={!editing ? (
+        <button onClick={() => setEditing(true)} style={{
+          fontSize: 11, padding: '3px 8px', borderRadius: 4,
+          background: '#f3f4f6', color: '#374151', border: 'none', cursor: 'pointer',
+        }}>
+          Edit
+        </button>
+      ) : undefined}
+    >
+      {editing ? (
+        <SolicitorEditForm
+          solicitor={solicitor}
+          onSave={handleSave}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Name"    value={`${solicitor.first_name} ${solicitor.last_name}`} />
+          <Field label="Firm"    value={solicitor.firm_name} />
+          <Field label="Email"   value={solicitor.email} />
+          <Field label="Phone"   value={solicitor.phone} />
+          <Field label="Address" value={solicitor.address} />
+        </div>
+      )}
     </Section>
   )
 }
