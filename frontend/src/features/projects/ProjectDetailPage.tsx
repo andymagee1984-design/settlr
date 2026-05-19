@@ -16,6 +16,15 @@ import ProjectReportsTab from './ProjectReportsTab'
 import NewSaleModal from '../sales/NewSaleModal'
 import type { LotSummary, LotStatus, ProjectDetail, Stage } from './types'
 
+// Extends the imported ProjectDetail with feasibility fields (project-level)
+interface ProjectDetailWithFeasibility extends ProjectDetail {
+  feasibility: { scenarios: FeasibilityScenario[] }
+  feasibility_committed: boolean
+  feasibility_committed_at: string | null
+  feasibility_totals: FeasibilityTotals
+  scenario_totals: ScenarioTotal[]
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared card style
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,8 +40,8 @@ const CARD: React.CSSProperties = {
 // API
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function fetchProjectDetail(id: string): Promise<ProjectDetail> {
-  const { data } = await client.get<ProjectDetail>(`/projects/${id}/`)
+async function fetchProjectDetail(id: string): Promise<ProjectDetailWithFeasibility> {
+  const { data } = await client.get<ProjectDetailWithFeasibility>(`/projects/${id}/`)
   return data
 }
 
@@ -42,7 +51,7 @@ async function fetchOrgUsers(): Promise<{ id: string; full_name: string }[]> {
 }
 
 function useProjectDetail(id: string | null) {
-  return useQuery({
+  return useQuery<ProjectDetailWithFeasibility>({
     queryKey: ['projects', 'detail', id],
     queryFn:  () => fetchProjectDetail(id!),
     enabled:  !!id,
@@ -58,8 +67,17 @@ function formatGR(totalGr: string | null | undefined): string {
   if (!totalGr) return '—'
   const n = Number(totalGr)
   if (isNaN(n) || n === 0) return '—'
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}m`
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}b`
+  if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(2)}m`
+  if (n >= 1_000)         return `$${Math.round(n / 1_000)}k`
+  return `$${n.toLocaleString()}`
+}
+
+function fmtGR(n: number): string {
+  if (n <= 0) return '—'
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}b`
+  if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(2)}m`
+  if (n >= 1_000)         return `$${Math.round(n / 1_000)}k`
   return `$${n.toLocaleString()}`
 }
 
@@ -111,10 +129,37 @@ const LOT_COLOURS: Record<string, string> = {
   townhouse: '#c0533a', apartment: '#3d4a5c', land: '#d4920e', house_and_land: '#2a8a7e', commercial: '#6b4fa0',
 }
 
+// Returns a colour for a lot_type+bedroom combo by lightening the base colour per bed tier
+function lineSegmentColour(lot_type: string, bedrooms: number | null): string {
+  const base = LOT_COLOURS[lot_type] ?? '#888780'
+  if (bedrooms == null) return base
+  // Parse hex and lighten proportionally: 1b=base, 2b=+20%, 3b=+35%, 4b+=+50%
+  const hex = base.replace('#', '')
+  const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16)
+  const t = Math.min((bedrooms - 1) * 0.22, 0.55)
+  const mix = (c: number) => Math.round(c + (255 - c) * t).toString(16).padStart(2,'0')
+  return `#${mix(r)}${mix(g)}${mix(b)}`
+}
+
+function lineSegmentLabel(lot_type: string, bedrooms: number | null): string {
+  const base = LOT_TYPE_FULL_LABELS[lot_type] ?? lot_type
+  return bedrooms != null ? `${base} ${bedrooms}b` : base
+}
+
+function lineSegmentKey(lot_type: string, bedrooms: number | null): string {
+  return bedrooms != null ? `${lot_type}_${bedrooms}` : lot_type
+}
+
+function uniqueSegments<T extends { key: string }>(items: T[]): T[] {
+  const seen = new Set<string>()
+  return items.filter(item => { if (seen.has(item.key)) return false; seen.add(item.key); return true })
+}
+
 function formatPrice(price: number | null): string {
   if (price === null) return '—'
-  if (price >= 1_000_000) return `$${(price / 1_000_000).toFixed(2)}m`
-  if (price >= 1_000)     return `$${Math.round(price / 1_000)}k`
+  if (price >= 1_000_000_000) return `$${(price / 1_000_000_000).toFixed(2)}b`
+  if (price >= 1_000_000)     return `$${(price / 1_000_000).toFixed(2)}m`
+  if (price >= 1_000)         return `$${Math.round(price / 1_000)}k`
   return `$${price}`
 }
 
@@ -574,8 +619,8 @@ interface DAMilestone {
   is_overdue: boolean
 }
 
-interface FeasibilityLine { lot_type: string; planned_count: number; avg_size_sqm: number; rate_per_sqm: number }
-interface FeasibilityScenario { id: string; name: string; is_active: boolean; notes: string; lines: FeasibilityLine[] }
+interface FeasibilityLine { lot_type: string; bedrooms: number | null; planned_count: number; avg_size_sqm: number; rate_per_sqm: number }
+interface FeasibilityScenario { id: string; name: string; is_active: boolean; da_id: string | null; notes: string; lines: FeasibilityLine[] }
 interface FeasibilityTotals { total_lots: number; total_gr: number }
 interface ScenarioTotal { id: string; name: string; is_active: boolean; total_lots: number; total_gr: number; breakdown: Record<string, { count: number; gr: number; rate: number }> }
 
@@ -599,11 +644,6 @@ interface DA {
   days_until_lapse: number | null
   open_conditions: number
   total_conditions: number
-  feasibility: { scenarios: FeasibilityScenario[] }
-  feasibility_committed: boolean
-  feasibility_committed_at: string | null
-  feasibility_totals: FeasibilityTotals
-  scenario_totals: ScenarioTotal[]
   conditions: DACondition[]
   milestones: DAMilestone[]
   documents: DADocument[]
@@ -789,8 +829,7 @@ function DACard({ da, canManage, projectId, stages, orgUsers, onUpdated }: {
             {da.stage_name && <span style={{ fontSize: 11, color: '#a89e98', background: '#f2f0ee', padding: '1px 8px', borderRadius: 99, border: '1px solid #e8e2dd' }}>{da.stage_name}</span>}
             {da.owner_name && <span style={{ fontSize: 11, color: '#7a6e68', display: 'flex', alignItems: 'center', gap: 3 }}><User size={10} />{da.owner_name}</span>}
             {da.is_lapsing_soon && <span style={{ fontSize: 11, fontWeight: 600, color: '#882010', background: '#fdf0ee', padding: '1px 8px', borderRadius: 99, border: '1px solid #f5c4bb' }}>⚠ Lapses in {da.days_until_lapse}d</span>}
-            {(da.feasibility?.scenarios ?? []).some(s => s.lines?.length > 0) && !da.feasibility_committed && <span style={{ fontSize: 10, color: '#9a5f00', background: '#fef6ec', padding: '1px 7px', borderRadius: 99, border: '1px solid #fcd9a0' }}>📊 Feasibility draft</span>}
-            {da.feasibility_committed && <span style={{ fontSize: 10, color: '#1a5c2e', background: '#eef7f0', padding: '1px 7px', borderRadius: 99, border: '1px solid #b8dfc3' }}>🎯 Feasibility committed</span>}
+            {/* Feasibility badges now shown at project level in Feasibility Scenarios section */}
           </div>
           {da.authority && <p style={{ fontSize: 12, color: '#a89e98', margin: '4px 0 0' }}>{da.authority}</p>}
           <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
@@ -1115,7 +1154,7 @@ function DACard({ da, canManage, projectId, stages, orgUsers, onUpdated }: {
 // DA Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
+function DADashboard({ das, canManage, project }: { das: DA[]; canManage: boolean; project: ProjectDetailWithFeasibility }) {
   // ── Aggregate all conditions and milestones across DAs ──────────────────
   const allConditions = das.flatMap(da => (da.conditions ?? []).map(c => ({ ...c, da_ref: da.reference_number || da.id.slice(0, 8), da_id: da.id })))
   const allMilestones = das.flatMap(da => (da.milestones ?? []).map(m => ({ ...m, da_ref: da.reference_number || da.id.slice(0, 8), da_id: da.id })))
@@ -1239,7 +1278,7 @@ function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
 
       {/* Feasibility stat cards — internal only */}
       {canManage && (() => {
-        const allScens = das.flatMap(da => (da.feasibility?.scenarios ?? []).map(s => ({ ...s })))
+        const allScens = (project.feasibility?.scenarios ?? [])
         const activeScens = allScens.filter(s => s.is_active)
         const totalFeasoLots = activeScens.reduce((t, s) => t + s.lines.reduce((tt, l) => tt + (l.planned_count||0), 0), 0)
         const totalFeasoGR   = activeScens.reduce((t, s) => t + s.lines.reduce((tt, l) => tt + (l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0), 0), 0)
@@ -1251,7 +1290,7 @@ function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
               <p style={{ fontSize: 11, color: '#c0533a', opacity: 0.7, marginTop: 4 }}>Feasibility lots (active)</p>
             </div>
             <div style={{ ...CARD, background: '#f7ece9', border: '1px solid #e8c4bb', padding: '14px 16px', textAlign: 'center' }}>
-              <p style={{ fontSize: 26, fontWeight: 700, color: '#c0533a', lineHeight: 1, margin: 0 }}>{totalFeasoGR > 0 ? `$${(totalFeasoGR/1_000_000).toFixed(1)}m` : '—'}</p>
+              <p style={{ fontSize: 26, fontWeight: 700, color: '#c0533a', lineHeight: 1, margin: 0 }}>{totalFeasoGR > 0 ? fmtGR(totalFeasoGR) : '—'}</p>
               <p style={{ fontSize: 11, color: '#c0533a', opacity: 0.7, marginTop: 4 }}>Target GR (active)</p>
             </div>
             <div style={{ ...CARD, padding: '14px 16px', textAlign: 'center' }}>
@@ -1342,7 +1381,10 @@ function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
 
       {/* Feasibility charts — internal only */}
       {canManage && (() => {
-        const allScens = das.flatMap(da => (da.feasibility?.scenarios ?? []).map(s => ({ ...s, da_ref: da.reference_number || da.id.slice(0,6) })))
+        const allScens = (project.feasibility?.scenarios ?? []).map(s => ({
+          ...s,
+          da_ref: s.da_id ? (das.find(d => d.id === s.da_id)?.reference_number || s.da_id.slice(0,6)) : null,
+        }))
         if (allScens.length === 0) return null
         const allLotTypes = Array.from(new Set(allScens.flatMap(s => s.lines.map(l => l.lot_type))))
         const maxGR   = Math.max(...allScens.map(s => s.lines.reduce((t, l) => t + (l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0), 0)), 1)
@@ -1364,7 +1406,7 @@ function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
                       <div key={s.id}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                           <span style={{ fontSize: 11, color: s.is_active ? '#2c2420' : '#7a6e68', fontWeight: s.is_active ? 600 : 400 }}>{s.name} · {s.da_ref}{s.is_active ? ' ✓' : ''}</span>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: s.is_active ? '#c0533a' : '#7a6e68' }}>{gr > 0 ? `$${(gr/1_000_000).toFixed(2)}m` : '—'}</span>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: s.is_active ? '#c0533a' : '#7a6e68' }}>{gr > 0 ? fmtGR(gr) : '—'}</span>
                         </div>
                         <div style={{ height: 8, borderRadius: 4, background: '#f0ebe6', overflow: 'hidden' }}>
                           <div style={{ height: '100%', borderRadius: 4, width: `${pct}%`, background: s.is_active ? '#c0533a' : '#3d4a5c', transition: 'width 0.3s' }} />
@@ -1382,25 +1424,30 @@ function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
                   const maxTotal = Math.max(...allScens.map(s => s.lines.reduce((t, l) => t + (l.planned_count||0), 0)), 1)
                   return (
                     <div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                        {allLotTypes.map(lt => (
-                          <div key={lt} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: 2, background: LOT_COLOURS[lt] ?? '#d4ccc5' }} />
-                            <span style={{ fontSize: 10, color: '#a89e98' }}>{LOT_TYPE_FULL_LABELS[lt] ?? lt}</span>
+                      {(() => {
+                        const allSegs = uniqueSegments(allScens.flatMap(s => s.lines.filter(l=>(l.planned_count||0)>0).map(l => ({ key: lineSegmentKey(l.lot_type, l.bedrooms), label: lineSegmentLabel(l.lot_type, l.bedrooms), colour: lineSegmentColour(l.lot_type, l.bedrooms) }))))
+                        return (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                            {allSegs.map(seg => (
+                              <div key={seg.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <div style={{ width: 8, height: 8, borderRadius: 2, background: seg.colour }} />
+                                <span style={{ fontSize: 10, color: '#a89e98' }}>{seg.label}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        )
+                      })()}
                       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: chartH }}>
                         {allScens.map(s => {
-                          const total  = s.lines.reduce((t, l) => t + (l.planned_count||0), 0)
-                          const byType = s.lines.reduce((acc, l) => { acc[l.lot_type] = (acc[l.lot_type]||0) + (l.planned_count||0); return acc }, {} as Record<string,number>)
-                          const barH   = maxTotal > 0 ? (total / maxTotal) * chartH : 0
+                          const total   = s.lines.reduce((t, l) => t + (l.planned_count||0), 0)
+                          const segs    = s.lines.filter(l => (l.planned_count||0) > 0).map(l => ({ key: lineSegmentKey(l.lot_type, l.bedrooms), label: lineSegmentLabel(l.lot_type, l.bedrooms), colour: lineSegmentColour(l.lot_type, l.bedrooms), cnt: l.planned_count||0 }))
+                          const barH    = maxTotal > 0 ? (total / maxTotal) * chartH : 0
                           return (
                             <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 }}>
                               <span style={{ fontSize: 10, fontWeight: 600, color: s.is_active ? '#2c2420' : '#a89e98' }}>{total > 0 ? total : ''}</span>
                               <div style={{ width: '100%', maxWidth: 44, height: barH, display: 'flex', flexDirection: 'column-reverse', borderRadius: '3px 3px 0 0', overflow: 'hidden', border: s.is_active ? '1.5px solid rgba(192,83,58,0.3)' : 'none' }}>
-                                {Object.entries(byType).map(([lt, cnt]) => (
-                                  <div key={lt} style={{ width: '100%', height: `${total > 0 ? (cnt/total)*100 : 0}%`, background: LOT_COLOURS[lt] ?? '#d4ccc5' }} title={`${LOT_TYPE_FULL_LABELS[lt]}: ${cnt}`} />
+                                {segs.map(seg => (
+                                  <div key={seg.key} style={{ width: '100%', height: `${total > 0 ? (seg.cnt/total)*100 : 0}%`, background: seg.colour }} title={`${seg.label}: ${seg.cnt}`} />
                                 ))}
                               </div>
                               <span style={{ fontSize: 9, color: s.is_active ? '#2c2420' : '#a89e98', fontWeight: s.is_active ? 600 : 400, textAlign: 'center', maxWidth: 48, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.name}>{s.name}</span>
@@ -1430,34 +1477,39 @@ function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
                       ))}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {allLotTypes.map(lt => (
-                      <div key={lt} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: LOT_COLOURS[lt] ?? '#7a6e68', marginBottom: 2 }}>{LOT_TYPE_FULL_LABELS[lt] ?? lt}</span>
-                        {allScens.map((s, si) => {
-                          const line = s.lines.find(l => l.lot_type === lt)
-                          const rate = line?.rate_per_sqm ?? 0
-                          const pct  = maxRate > 0 ? (rate / maxRate) * 100 : 0
-                          const col  = DASH_SCEN_COLOURS[si % DASH_SCEN_COLOURS.length]
-                          return (
-                            <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '1fr 72px', gap: 8, alignItems: 'center' }}>
-                              <div style={{ height: 18, borderRadius: 3, background: '#f0ebe6', overflow: 'hidden', position: 'relative' }}>
-                                {rate > 0 && (
-                                  <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pct}%`, background: col, opacity: s.is_active ? 1 : 0.45, borderRadius: 3, transition: 'width 0.3s', display: 'flex', alignItems: 'center', paddingLeft: 6, boxSizing: 'border-box' }}>
-                                    {pct > 20 && <span style={{ fontSize: 9, color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>{s.name}</span>}
+                  {(() => {
+                    const allLineKeys = uniqueSegments(allScens.flatMap(s => s.lines.map(l => ({ key: lineSegmentKey(l.lot_type, l.bedrooms), lot_type: l.lot_type, bedrooms: l.bedrooms, label: lineSegmentLabel(l.lot_type, l.bedrooms), colour: lineSegmentColour(l.lot_type, l.bedrooms) }))))
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {allLineKeys.map(lk => (
+                          <div key={lk.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: lk.colour, marginBottom: 2 }}>{lk.label}</span>
+                            {allScens.map((s, si) => {
+                              const line = s.lines.find(l => l.lot_type === lk.lot_type && l.bedrooms === lk.bedrooms)
+                              const rate = line?.rate_per_sqm ?? 0
+                              const pct  = maxRate > 0 ? (rate / maxRate) * 100 : 0
+                              const col  = DASH_SCEN_COLOURS[si % DASH_SCEN_COLOURS.length]
+                              return (
+                                <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '1fr 72px', gap: 8, alignItems: 'center' }}>
+                                  <div style={{ height: 18, borderRadius: 3, background: '#f0ebe6', overflow: 'hidden', position: 'relative' }}>
+                                    {rate > 0 && (
+                                      <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pct}%`, background: col, opacity: s.is_active ? 1 : 0.45, borderRadius: 3, transition: 'width 0.3s', display: 'flex', alignItems: 'center', paddingLeft: 6, boxSizing: 'border-box' }}>
+                                        {pct > 20 && <span style={{ fontSize: 9, color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>{s.name}</span>}
+                                      </div>
+                                    )}
+                                    {rate === 0 && <span style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', fontSize: 9, color: '#c4bab5' }}>not modelled</span>}
                                   </div>
-                                )}
-                                {rate === 0 && <span style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', fontSize: 9, color: '#c4bab5' }}>not modelled</span>}
-                              </div>
-                              <span style={{ fontSize: 11, color: rate > 0 ? '#2c2420' : '#d4ccc5', fontWeight: rate > 0 ? 600 : 400, textAlign: 'right' }}>
-                                {rate > 0 ? `$${rate.toLocaleString()}/m²` : '—'}
-                              </span>
-                            </div>
-                          )
-                        })}
+                                  <span style={{ fontSize: 11, color: rate > 0 ? '#2c2420' : '#d4ccc5', fontWeight: rate > 0 ? 600 : 400, textAlign: 'right' }}>
+                                    {rate > 0 ? `$${rate.toLocaleString()}/m²` : '—'}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })()}
                 </div>
               )
             })()}
@@ -1553,30 +1605,40 @@ function DADashboard({ das, canManage }: { das: DA[]; canManage: boolean }) {
 // FeasibilitySection — project-level, between dashboard and DA cards
 // ─────────────────────────────────────────────────────────────────────────────
 
-function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => void }) {
-  const [scenariosMap, setScenariosMap] = useState<Record<string, FeasibilityScenario[]>>(() =>
-    Object.fromEntries(das.map(da => [da.id, da.feasibility?.scenarios ?? []]))
-  )
+function FeasibilitySection({ project, das, onUpdated }: { project: ProjectDetailWithFeasibility; das: DA[]; onUpdated: () => void }) {
+  // Single map keyed by project id — feasibility lives on the project
+  const [scenariosMap, setScenariosMap] = useState<Record<string, FeasibilityScenario[]>>(() => ({
+    [project.id]: project.feasibility?.scenarios ?? []
+  }))
+  const [dirtyDAs, setDirtyDAs] = useState<Set<string>>(new Set())
   const [expandedScenario, setExpandedScenario] = useState<string | null>(null)
-  const [savedDA, setSavedDA]       = useState<string | null>(null)
+  const [savedDAs, setSavedDAs] = useState<Set<string>>(new Set())
   const [commitConfirm, setCommitConfirm] = useState<string | null>(null)
   const [visibleLotTypes, setVisibleLotTypes] = useState<string[]>(['land', 'house_and_land', 'apartment', 'townhouse', 'commercial'])
   const [activeDaTab, setActiveDaTab] = useState<string>(das[0]?.id ?? '')
   const [confirmClearDA, setConfirmClearDA] = useState<string | null>(null)
+
+  // Re-sync from server whenever project refreshes, preserving unsaved local edits
+  useEffect(() => {
+    setScenariosMap(prev => {
+      if (dirtyDAs.has(project.id)) return prev
+      return { [project.id]: project.feasibility?.scenarios ?? [] }
+    })
+  }, [project])
   const [confirmRemoveScen, setConfirmRemoveScen] = useState<string | null>(null)
 
   const { mutate: saveFeasibility } = useMutation({
-    mutationFn: ({ daId, scenarios }: { daId: string; scenarios: FeasibilityScenario[] }) =>
-      client.patch(`/development-applications/${daId}/`, { feasibility: { scenarios } }),
-    onSuccess: (_, { daId }) => { setSavedDA(daId); setTimeout(() => setSavedDA(null), 2000); onUpdated() },
+    mutationFn: (scenarios: FeasibilityScenario[]) =>
+      client.patch(`/projects/${project.id}/`, { feasibility: { scenarios } }),
+    onSuccess: () => { setSavedDAs(prev => new Set(prev).add(project.id)); setTimeout(() => setSavedDAs(prev => { const n = new Set(prev); n.delete(project.id); return n }), 2500); setDirtyDAs(prev => { const n = new Set(prev); n.delete(project.id); return n }); onUpdated() },
   })
   const { mutate: clearFeasibility } = useMutation({
-    mutationFn: (daId: string) => client.patch(`/development-applications/${daId}/`, { feasibility: { scenarios: [] } }),
-    onSuccess: (_, daId) => { setScenariosMap(prev => ({ ...prev, [daId]: [] })); setConfirmClearDA(null); onUpdated() },
+    mutationFn: () => client.patch(`/projects/${project.id}/`, { feasibility: { scenarios: [] } }),
+    onSuccess: () => { setScenariosMap({ [project.id]: [] }); setDirtyDAs(prev => { const n = new Set(prev); n.delete(project.id); return n }); setConfirmClearDA(null); onUpdated() },
   })
 
   const { mutate: commitFeasibility, isPending: committingFeasibility } = useMutation({
-    mutationFn: (daId: string) => client.post(`/development-applications/${daId}/commit-feasibility/`, {}),
+    mutationFn: () => client.post(`/projects/${project.id}/commit-feasibility/`, {}),
     onSuccess: () => { setCommitConfirm(null); onUpdated() },
   })
 
@@ -1586,8 +1648,10 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
   const maxScenGR   = Math.max(...allScenariosFlat.map(s => s.lines.reduce((t, l) => t + (l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0), 0)), 1)
   const maxScenLots = Math.max(...allScenariosFlat.map(s => s.lines.reduce((t, l) => t + (l.planned_count||0), 0)), 1)
 
-  const updateScenarios = (daId: string, newScenarios: FeasibilityScenario[]) =>
+  const updateScenarios = (daId: string, newScenarios: FeasibilityScenario[]) => {
+    setDirtyDAs(prev => new Set(prev).add(daId))
     setScenariosMap(prev => ({ ...prev, [daId]: newScenarios }))
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1615,7 +1679,7 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
                         <span style={{ fontSize: 11, color: s.is_active ? '#2c2420' : '#7a6e68', fontWeight: s.is_active ? 600 : 400 }}>
                           {s.name}{da ? ` · ${da.reference_number || da.id.slice(0,6)}` : ''}{s.is_active ? ' ✓' : ''}
                         </span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: s.is_active ? '#c0533a' : '#7a6e68' }}>{gr > 0 ? `$${(gr/1_000_000).toFixed(2)}m` : '—'}</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: s.is_active ? '#c0533a' : '#7a6e68' }}>{gr > 0 ? fmtGR(gr) : '—'}</span>
                       </div>
                       <div style={{ height: 8, borderRadius: 4, background: '#f0ebe6', overflow: 'hidden' }}>
                         <div style={{ height: '100%', borderRadius: 4, width: `${pct}%`, background: s.is_active ? '#c0533a' : '#3d4a5c', transition: 'width 0.3s' }} />
@@ -1637,15 +1701,20 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
                 const totalW = allScenariosFlat.length * (BAR_W + GAP) - GAP
                 return (
                   <div>
-                    {/* Legend */}
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                      {allLotTypes.map(lt => (
-                        <div key={lt} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: 2, background: LOT_COLOURS[lt] ?? '#d4ccc5', flexShrink: 0 }} />
-                          <span style={{ fontSize: 10, color: '#a89e98' }}>{LOT_TYPE_FULL_LABELS[lt] ?? lt}</span>
+                    {/* Legend — bed-split */}
+                    {(() => {
+                      const allSegs = uniqueSegments(allScenariosFlat.flatMap(s => s.lines.filter(l=>(l.planned_count||0)>0).map(l => ({ key: lineSegmentKey(l.lot_type, l.bedrooms), label: lineSegmentLabel(l.lot_type, l.bedrooms), colour: lineSegmentColour(l.lot_type, l.bedrooms) }))))
+                      return (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                          {allSegs.map(seg => (
+                            <div key={seg.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: 2, background: seg.colour, flexShrink: 0 }} />
+                              <span style={{ fontSize: 10, color: '#a89e98' }}>{seg.label}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      )
+                    })()}
                     {/* Bars */}
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: GAP, height: chartH }}>
                       {allScenariosFlat.map(s => {
@@ -1745,7 +1814,7 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
                     return [
                       <span key={`${s.id}-n`} style={{ fontSize: 12, color: '#2c2420', padding: '6px 0', borderTop: '1px solid #f0ebe6' }}>{s.name}</span>,
                       <span key={`${s.id}-l`} style={{ fontSize: 12, fontWeight: 600, color: dLots > 0 ? '#1a5c2e' : dLots < 0 ? '#882010' : '#7a6e68', padding: '6px 0', borderTop: '1px solid #f0ebe6' }}>{dLots > 0 ? `+${dLots}` : dLots}</span>,
-                      <span key={`${s.id}-g`} style={{ fontSize: 12, fontWeight: 600, color: dGR > 0 ? '#1a5c2e' : dGR < 0 ? '#882010' : '#7a6e68', padding: '6px 0', borderTop: '1px solid #f0ebe6' }}>{dGR !== 0 ? `${dGR > 0 ? '+' : ''}$${(dGR/1_000_000).toFixed(2)}m` : '—'}</span>,
+                      <span key={`${s.id}-g`} style={{ fontSize: 12, fontWeight: 600, color: dGR > 0 ? '#1a5c2e' : dGR < 0 ? '#882010' : '#7a6e68', padding: '6px 0', borderTop: '1px solid #f0ebe6' }}>{dGR !== 0 ? `${dGR > 0 ? '+' : ''}${fmtGR(Math.abs(dGR))}` : '—'}</span>,
                       <span key={`${s.id}-r`} style={{ fontSize: 12, color: '#7a6e68', padding: '6px 0', borderTop: '1px solid #f0ebe6' }}>{blended > 0 ? `$${Math.round(blended).toLocaleString()}/m²` : '—'}</span>,
                     ]
                   })}
@@ -1756,68 +1825,79 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
         </div>
       )}
 
-      {/* DA tab selector */}
-      {das.length > 1 && (
-        <div style={{ display: 'flex', borderBottom: '1px solid #f0ebe6', overflowX: 'auto' }}>
-          {das.map(da => (
-            <button key={da.id} onClick={() => setActiveDaTab(da.id)} style={{ padding: '6px 14px', fontSize: 11, fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none', borderBottom: `2px solid ${activeDaTab === da.id ? '#c0533a' : 'transparent'}`, color: activeDaTab === da.id ? '#2c2420' : '#a89e98', fontFamily: 'var(--font-body)', whiteSpace: 'nowrap' }}>
-              {da.reference_number || da.id.slice(0, 8)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Scenario editor per DA */}
-      {das.map(da => {
-        if (das.length > 1 && activeDaTab !== da.id) return null
-        const scenarios  = scenariosMap[da.id] ?? []
+      {/* Scenario editor — project level */}
+      {(() => {
+        const scenarios  = scenariosMap[project.id] ?? []
         const activeScen = scenarios.find(s => s.is_active) ?? null
-        const canCommit  = !da.feasibility_committed && activeScen && ['approved', 'conditions_issued', 'operational_works'].includes(da.status) && (activeScen.lines.length > 0)
-        const addScenario = () => { const id = Math.random().toString(36).slice(2, 10); const updated = [...scenarios, { id, name: `Scenario ${scenarios.length + 1}`, is_active: scenarios.length === 0, notes: '', lines: [] }]; updateScenarios(da.id, updated); setExpandedScenario(id) }
-        const setActive   = (id: string) => updateScenarios(da.id, scenarios.map(s => ({ ...s, is_active: s.id === id })))
+        const canCommit  = !project.feasibility_committed && activeScen && activeScen.lines.length > 0
+        const addScenario = () => {
+          const id = Math.random().toString(36).slice(2, 10)
+          const updated = [...scenarios, { id, name: `Scenario ${scenarios.length + 1}`, is_active: scenarios.length === 0, da_id: null, notes: '', lines: [] as FeasibilityLine[] }]
+          updateScenarios(project.id, updated)
+          setExpandedScenario(id)
+        }
+        const setActive      = (id: string) => updateScenarios(project.id, scenarios.map(s => ({ ...s, is_active: s.id === id })))
         const removeScenario = (id: string) => {
           const r = scenarios.filter(s => s.id !== id)
           if (r.length > 0 && !r.some(s => s.is_active)) r[0].is_active = true
-          updateScenarios(da.id, r)
+          updateScenarios(project.id, r)
           setConfirmRemoveScen(null)
         }
-        const updateScenario = (id: string, patch: Partial<FeasibilityScenario>) => updateScenarios(da.id, scenarios.map(s => s.id === id ? { ...s, ...patch } : s))
-        const addLine    = (sid: string) => updateScenarios(da.id, scenarios.map(s => s.id !== sid ? s : { ...s, lines: [...s.lines, { lot_type: 'townhouse', planned_count: 0, avg_size_sqm: 0, rate_per_sqm: 0 }] }))
-        const updateLine = (sid: string, li: number, patch: Partial<FeasibilityLine>) => updateScenarios(da.id, scenarios.map(s => s.id !== sid ? s : { ...s, lines: s.lines.map((l, i) => i === li ? { ...l, ...patch } : l) }))
-        const removeLine = (sid: string, li: number) => updateScenarios(da.id, scenarios.map(s => s.id !== sid ? s : { ...s, lines: s.lines.filter((_, i) => i !== li) }))
+        const updateScenario = (id: string, patch: Partial<FeasibilityScenario>) => updateScenarios(project.id, scenarios.map(s => s.id === id ? { ...s, ...patch } : s))
+        const addLine    = (sid: string) => updateScenarios(project.id, scenarios.map(s => s.id !== sid ? s : { ...s, lines: [...s.lines, { lot_type: 'townhouse', bedrooms: null, planned_count: 0, avg_size_sqm: 0, rate_per_sqm: 0 }] }))
+        const updateLine = (sid: string, li: number, patch: Partial<FeasibilityLine>) => updateScenarios(project.id, scenarios.map(s => s.id !== sid ? s : { ...s, lines: s.lines.map((l, i) => i === li ? { ...l, ...patch } : l) }))
+        const removeLine = (sid: string, li: number) => updateScenarios(project.id, scenarios.map(s => s.id !== sid ? s : { ...s, lines: s.lines.filter((_, i) => i !== li) }))
         return (
-          <div key={da.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Header row — project committed badge + clear button */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {das.length === 1 && <span style={{ fontSize: 12, color: '#7a6e68' }}>DA: {da.reference_number || da.id.slice(0, 8)}</span>}
-                {da.feasibility_committed && <span style={{ fontSize: 11, fontWeight: 600, color: '#1a5c2e', background: '#eef7f0', padding: '2px 8px', borderRadius: 99, border: '1px solid #b8dfc3' }}>🎯 Committed</span>}
+                {project.feasibility_committed && <span style={{ fontSize: 11, fontWeight: 600, color: '#1a5c2e', background: '#eef7f0', padding: '2px 8px', borderRadius: 99, border: '1px solid #b8dfc3' }}>🎯 Committed</span>}
               </div>
               {scenarios.length > 0 && (
-                confirmClearDA === da.id ? (
+                confirmClearDA === project.id ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fdf0ee', borderRadius: 8, border: '1px solid #f5c4bb' }}>
-                    <span style={{ fontSize: 11, color: '#882010' }}>Remove all scenarios from this DA?</span>
-                    <button onClick={() => clearFeasibility(da.id)} style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 5, background: '#882010', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Remove all</button>
+                    <span style={{ fontSize: 11, color: '#882010' }}>Remove all feasibility scenarios?</span>
+                    <button onClick={() => clearFeasibility()} style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 5, background: '#882010', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Remove all</button>
                     <button onClick={() => setConfirmClearDA(null)} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 5, background: '#f2f0ee', color: '#2c2420', border: '1px solid #e8e2dd', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Cancel</button>
                   </div>
                 ) : (
-                  <button onClick={() => setConfirmClearDA(da.id)} style={{ fontSize: 11, color: '#a89e98', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-body)' }}>
-                    <X size={12} /> Remove feasibility
+                  <button onClick={() => setConfirmClearDA(project.id)} style={{ fontSize: 11, color: '#a89e98', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-body)' }}>
+                    <X size={12} /> Remove all scenarios
                   </button>
                 )
               )}
             </div>
-            {scenarios.length === 0 && <div style={{ textAlign: 'center', padding: '20px', background: '#f9f6f4', borderRadius: 8, border: '1px dashed #d4ccc5' }}><p style={{ fontSize: 12, color: '#a89e98', margin: 0 }}>No scenarios yet. Add one to start modelling.</p></div>}
+
+            {scenarios.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '20px', background: '#f9f6f4', borderRadius: 8, border: '1px dashed #d4ccc5' }}>
+                <p style={{ fontSize: 12, color: '#a89e98', margin: 0 }}>No scenarios yet — use "+ Add feasibility" above to get started.</p>
+              </div>
+            )}
+
             {scenarios.map(s => {
               const isExp     = expandedScenario === s.id
               const totalLots = s.lines.reduce((t, l) => t + (l.planned_count||0), 0)
               const totalGR   = s.lines.reduce((t, l) => t + (l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0), 0)
+              const linkedDA  = das.find(d => d.id === s.da_id)
               return (
                 <div key={s.id} style={{ ...CARD, overflow: 'hidden' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: s.is_active ? '#f7ece9' : '#f9f6f4', cursor: 'pointer' }} onClick={() => setExpandedScenario(isExp ? null : s.id)}>
                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: s.is_active ? '#c0533a' : '#d4ccc5', flexShrink: 0 }} />
                     <input value={s.name} onClick={e => e.stopPropagation()} onChange={e => updateScenario(s.id, { name: e.target.value })} style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, fontWeight: s.is_active ? 600 : 400, color: '#2c2420', outline: 'none', fontFamily: 'var(--font-body)' }} />
                     {s.is_active && <span style={{ fontSize: 10, fontWeight: 600, color: '#c0533a', background: '#fdf0ee', padding: '1px 8px', borderRadius: 99, border: '1px solid #f5c4bb', flexShrink: 0 }}>Active</span>}
-                    <span style={{ fontSize: 11, color: '#a89e98', flexShrink: 0 }}>{totalLots} lots · {totalGR > 0 ? `$${(totalGR/1_000_000).toFixed(2)}m` : '—'}</span>
+                    {linkedDA && <span style={{ fontSize: 10, color: '#7a6e68', background: '#f2f0ee', padding: '1px 7px', borderRadius: 99, border: '1px solid #e8e2dd', flexShrink: 0 }}>DA: {linkedDA.reference_number || linkedDA.id.slice(0,8)}</span>}
+                    <span style={{ fontSize: 11, color: '#a89e98', flexShrink: 0 }}>
+                      {totalLots} lots
+                      {s.lines.some(l => l.bedrooms != null) && (
+                        <span style={{ marginLeft: 4 }}>
+                          {Object.entries(s.lines.reduce((acc, l) => { if (l.bedrooms != null) acc[l.bedrooms] = (acc[l.bedrooms]||0) + (l.planned_count||0); return acc }, {} as Record<number,number>)).sort(([a],[b]) => Number(a)-Number(b)).map(([beds, cnt]) => (
+                            <span key={beds} style={{ marginLeft: 4, fontSize: 10, color: '#a89e98' }}>{beds}b×{cnt}</span>
+                          ))}
+                        </span>
+                      )}
+                      {totalGR > 0 ? ` · ${fmtGR(totalGR)}` : ''}
+                    </span>
                     {!s.is_active && <button onClick={e => { e.stopPropagation(); setActive(s.id) }} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 5, background: '#eef7f0', color: '#1a5c2e', border: '1px solid #b8dfc3', cursor: 'pointer', fontFamily: 'var(--font-body)', flexShrink: 0 }}>Set active</button>}
                     {confirmRemoveScen === s.id ? (
                       <>
@@ -1831,35 +1911,50 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
                   </div>
                   {isExp && (
                     <div style={{ padding: '12px 14px', borderTop: '1px solid #f0ebe6' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 88px 96px 100px 100px 28px', gap: 6, marginBottom: 6 }}>
-                        {['Lot type', 'Count', 'Avg m²', '$/m²', 'Target price', 'Target GR', ''].map(h => <span key={h} style={{ fontSize: 9, fontWeight: 600, color: '#a89e98', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>)}
+                      {/* Optional DA link */}
+                      {das.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: '#a89e98', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Link to DA</span>
+                          <select value={s.da_id ?? ''} onChange={e => updateScenario(s.id, { da_id: e.target.value || null })} style={{ ...iStyle, fontSize: 11, width: 'auto', minWidth: 160 }}>
+                            <option value=''>None — independent scenario</option>
+                            {das.map(da => <option key={da.id} value={da.id}>{da.reference_number || da.id.slice(0,8)}{da.stage_name ? ` — ${da.stage_name}` : ''}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px 60px 80px 88px 96px 100px 28px', gap: 6, marginBottom: 6 }}>
+                        {['Lot type', 'Beds', 'Count', 'Avg m²', '$/m²', 'Target price', 'Target GR', ''].map(h => <span key={h} style={{ fontSize: 9, fontWeight: 600, color: '#a89e98', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>)}
                       </div>
                       {s.lines.map((line, li) => {
                         const price = (line.avg_size_sqm||0) * (line.rate_per_sqm||0)
                         const gr    = price * (line.planned_count||0)
                         return (
-                          <div key={li} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 88px 96px 100px 100px 28px', gap: 6, marginBottom: 4, alignItems: 'center' }}>
+                          <div key={li} style={{ display: 'grid', gridTemplateColumns: '1fr 48px 60px 80px 88px 96px 100px 28px', gap: 6, marginBottom: 4, alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <div style={{ width: 8, height: 8, borderRadius: 2, background: LOT_COLOURS[line.lot_type] ?? '#d4ccc5', flexShrink: 0 }} />
                               <select value={line.lot_type} onChange={e => updateLine(s.id, li, { lot_type: e.target.value })} style={{ ...iStyle, fontSize: 11, flex: 1 }}>
                                 {Object.entries(LOT_TYPE_FULL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                               </select>
                             </div>
+                            <select value={line.bedrooms ?? ''} onChange={e => updateLine(s.id, li, { bedrooms: e.target.value === '' ? null : Number(e.target.value) })} style={{ ...iStyle, fontSize: 11 }}>
+                              <option value=''>—</option>
+                              {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
                             <input type="number" min={0} value={line.planned_count || ''} onChange={e => updateLine(s.id, li, { planned_count: Number(e.target.value) })} style={{ ...iStyle, fontSize: 11 }} placeholder="0" />
                             <input type="number" min={0} value={line.avg_size_sqm || ''} onChange={e => updateLine(s.id, li, { avg_size_sqm: Number(e.target.value) })} style={{ ...iStyle, fontSize: 11 }} placeholder="0" />
                             <input type="number" min={0} value={line.rate_per_sqm || ''} onChange={e => updateLine(s.id, li, { rate_per_sqm: Number(e.target.value) })} style={{ ...iStyle, fontSize: 11 }} placeholder="0" />
                             <span style={{ fontSize: 11, color: '#2c2420', fontWeight: 500 }}>{price > 0 ? `$${Math.round(price/1000)}k` : '—'}</span>
-                            <span style={{ fontSize: 11, color: '#c0533a', fontWeight: 600 }}>{gr > 0 ? `$${(gr/1_000_000).toFixed(2)}m` : '—'}</span>
+                            <span style={{ fontSize: 11, color: '#c0533a', fontWeight: 600 }}>{gr > 0 ? fmtGR(gr) : '—'}</span>
                             <button onClick={() => removeLine(s.id, li)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d4ccc5', padding: 0 }}><X size={12} /></button>
                           </div>
                         )
                       })}
                       {s.lines.length > 0 && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 88px 96px 100px 100px 28px', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '2px solid #e8e2dd' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px 60px 80px 88px 96px 100px 28px', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '2px solid #e8e2dd' }}>
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#2c2420' }}>Total</span>
+                          <span />
                           <span style={{ fontSize: 12, fontWeight: 700, color: '#2c2420' }}>{totalLots}</span>
                           <span /><span /><span />
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#c0533a' }}>{totalGR > 0 ? `$${(totalGR/1_000_000).toFixed(2)}m` : '—'}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#c0533a' }}>{totalGR > 0 ? fmtGR(totalGR) : '—'}</span>
                           <span />
                         </div>
                       )}
@@ -1870,18 +1965,19 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
                 </div>
               )
             })}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 8 }}>
               <button onClick={addScenario} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '6px 14px', borderRadius: 6, background: '#f2f0ee', color: '#2c2420', border: '1px solid #e8e2dd', cursor: 'pointer', fontFamily: 'var(--font-body)' }}><Plus size={12} /> Add scenario</button>
-              <button onClick={() => saveFeasibility({ daId: da.id, scenarios })} style={{ fontSize: 12, fontWeight: 500, padding: '6px 14px', borderRadius: 6, background: '#3d4a5c', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
-                {savedDA === da.id ? '✓ Saved' : 'Save scenarios'}
+              <button onClick={() => saveFeasibility(scenarios)} style={{ fontSize: 12, fontWeight: 500, padding: '6px 14px', borderRadius: 6, background: '#3d4a5c', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
+                {savedDAs.has(project.id) ? '✓ Saved' : 'Save scenarios'}
               </button>
               {canCommit && (
-                commitConfirm !== da.id ? (
-                  <button onClick={() => setCommitConfirm(da.id)} style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6, background: '#c0533a', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 2px 6px rgba(192,83,58,0.30)' }}>🎯 Commit active scenario to project</button>
+                commitConfirm !== project.id ? (
+                  <button onClick={() => setCommitConfirm(project.id)} style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6, background: '#c0533a', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 2px 6px rgba(192,83,58,0.30)' }}>🎯 Commit active scenario to project</button>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#fdf0ee', borderRadius: 8, border: '1px solid #f5c4bb' }}>
-                    <span style={{ fontSize: 12, color: '#882010' }}>Commit "{activeScen!.name}" — {activeScen!.lines.reduce((t,l)=>t+(l.planned_count||0),0)} lots, ${(activeScen!.lines.reduce((t,l)=>t+(l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0),0)/1_000_000).toFixed(2)}m GR?</span>
-                    <button onClick={() => commitFeasibility(da.id)} disabled={committingFeasibility} style={{ padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600, background: '#c0533a', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>{committingFeasibility ? 'Committing…' : 'Confirm'}</button>
+                    <span style={{ fontSize: 12, color: '#882010' }}>Commit "{activeScen!.name}" — {activeScen!.lines.reduce((t,l)=>t+(l.planned_count||0),0)} lots, {fmtGR(activeScen!.lines.reduce((t,l)=>t+(l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0),0))} GR?</span>
+                    <button onClick={() => commitFeasibility()} disabled={committingFeasibility} style={{ padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600, background: '#c0533a', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>{committingFeasibility ? 'Committing…' : 'Confirm'}</button>
                     <button onClick={() => setCommitConfirm(null)} style={{ padding: '4px 8px', borderRadius: 5, fontSize: 11, background: '#f2f0ee', color: '#2c2420', border: '1px solid #e8e2dd', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Cancel</button>
                   </div>
                 )
@@ -1889,7 +1985,8 @@ function FeasibilitySection({ das, onUpdated }: { das: DA[]; onUpdated: () => vo
             </div>
           </div>
         )
-      })}
+      })()}
+
     </div>
   )
 }
@@ -1903,7 +2000,7 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
   const [addDAForm, setAddDAForm] = useState({ reference_number: '', authority: '', status: 'pre_lodgement', stage: '' })
   const [showAddFeasibility, setShowAddFeasibility] = useState(false)
   const [addFeasoDA, setAddFeasoDA] = useState('')
-  const [addFeasoForm, setAddFeasoForm] = useState({ scenarioName: 'Scenario 1', notes: '', lines: [] as { lot_type: string; planned_count: number; avg_size_sqm: number; rate_per_sqm: number }[] })
+  const [addFeasoForm, setAddFeasoForm] = useState({ scenarioName: 'Scenario 1', notes: '', lines: [] as { lot_type: string; bedrooms: number | null; planned_count: number; avg_size_sqm: number; rate_per_sqm: number }[] })
 
   const { data: das = [], isLoading } = useQuery<DA[]>({
     queryKey: ['development-applications', project.id],
@@ -1927,14 +2024,18 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
 
   const { mutate: createFeasibility, isPending: creatingFeasibility } = useMutation({
     mutationFn: () => {
-      const daId = addFeasoDA || (das.length === 1 ? das[0].id : null)
-      if (!daId) throw new Error('Select a DA')
-      const da = das.find(d => d.id === daId)!
-      const existing = da.feasibility?.scenarios ?? []
-      const newScen = { id: Math.random().toString(36).slice(2, 10), name: addFeasoForm.scenarioName || 'Scenario 1', is_active: existing.length === 0, notes: addFeasoForm.notes, lines: addFeasoForm.lines }
-      return client.patch(`/development-applications/${daId}/`, { feasibility: { scenarios: [...existing, newScen] } })
+      const existing = project.feasibility?.scenarios ?? []
+      const newScen = {
+        id: Math.random().toString(36).slice(2, 10),
+        name: addFeasoForm.scenarioName || 'Scenario 1',
+        is_active: existing.length === 0,
+        da_id: addFeasoDA || null,
+        notes: addFeasoForm.notes,
+        lines: addFeasoForm.lines,
+      }
+      return client.patch(`/projects/${project.id}/`, { feasibility: { scenarios: [...existing, newScen] } })
     },
-    onSuccess: () => { setShowAddFeasibility(false); setAddFeasoForm({ scenarioName: 'Scenario 1', notes: '', lines: [] }); setAddFeasoDA(''); queryClient.invalidateQueries({ queryKey: ['development-applications', project.id] }) },
+    onSuccess: () => { setShowAddFeasibility(false); setAddFeasoForm({ scenarioName: 'Scenario 1', notes: '', lines: [] }); setAddFeasoDA(''); queryClient.invalidateQueries({ queryKey: ['projects', 'detail', project.id] }) },
   })
 
   const onUpdated = () => queryClient.invalidateQueries({ queryKey: ['development-applications', project.id] })
@@ -1978,7 +2079,7 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
         const iS: React.CSSProperties = { width: '100%', boxSizing: 'border-box', border: '1px solid #d4ccc5', borderRadius: 6, padding: '7px 10px', fontSize: 12, color: '#2c2420', background: '#fff', outline: 'none' }
         const lS: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 600, color: '#a89e98', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }
         const activeDaId = addFeasoDA || (das.length === 1 ? das[0].id : '')
-        const addLine = () => setAddFeasoForm(f => ({ ...f, lines: [...f.lines, { lot_type: 'townhouse', planned_count: 0, avg_size_sqm: 0, rate_per_sqm: 0 }] }))
+        const addLine = () => setAddFeasoForm(f => ({ ...f, lines: [...f.lines, { lot_type: 'townhouse', bedrooms: null, planned_count: 0, avg_size_sqm: 0, rate_per_sqm: 0 }] }))
         const updateLine = (i: number, patch: Partial<typeof addFeasoForm.lines[0]>) => setAddFeasoForm(f => ({ ...f, lines: f.lines.map((l, idx) => idx === i ? { ...l, ...patch } : l) }))
         const removeLine = (i: number) => setAddFeasoForm(f => ({ ...f, lines: f.lines.filter((_, idx) => idx !== i) }))
         return (
@@ -1996,11 +2097,11 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
                 <label style={lS}>Scenario name</label>
                 <input style={iS} value={addFeasoForm.scenarioName} onChange={e => setAddFeasoForm(f => ({ ...f, scenarioName: e.target.value }))} placeholder="e.g. Base case" />
               </div>
-              {das.length > 1 && (
+              {das.length > 0 && (
                 <div>
-                  <label style={lS}>Attach to DA</label>
+                  <label style={lS}>Link to DA <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(optional)</span></label>
                   <select style={iS} value={activeDaId} onChange={e => setAddFeasoDA(e.target.value)}>
-                    <option value="">Select a DA…</option>
+                    <option value="">None — independent scenario</option>
                     {das.map(da => <option key={da.id} value={da.id}>{da.reference_number || da.id.slice(0, 8)}{da.stage_name ? ` — ${da.stage_name}` : ''}</option>)}
                   </select>
                 </div>
@@ -2009,8 +2110,8 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
 
             {/* Lot type lines */}
             <div style={{ marginBottom: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 88px 96px 100px 100px 28px', gap: 6, marginBottom: 6 }}>
-                {['Lot type', 'Count', 'Avg m²', '$/m²', 'Target price', 'Target GR', ''].map(h => (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px 60px 80px 88px 96px 100px 28px', gap: 6, marginBottom: 6 }}>
+                {['Lot type', 'Beds', 'Count', 'Avg m²', '$/m²', 'Target price', 'Target GR', ''].map(h => (
                   <span key={h} style={{ fontSize: 9, fontWeight: 600, color: '#a89e98', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
                 ))}
               </div>
@@ -2018,18 +2119,22 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
                 const price = (line.avg_size_sqm || 0) * (line.rate_per_sqm || 0)
                 const gr    = price * (line.planned_count || 0)
                 return (
-                  <div key={li} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 88px 96px 100px 100px 28px', gap: 6, marginBottom: 4, alignItems: 'center' }}>
+                  <div key={li} style={{ display: 'grid', gridTemplateColumns: '1fr 48px 60px 80px 88px 96px 100px 28px', gap: 6, marginBottom: 4, alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <div style={{ width: 8, height: 8, borderRadius: 2, background: LOT_COLOURS[line.lot_type] ?? '#d4ccc5', flexShrink: 0 }} />
                       <select value={line.lot_type} onChange={e => updateLine(li, { lot_type: e.target.value })} style={{ ...iS, fontSize: 11, flex: 1 }}>
                         {Object.entries(LOT_TYPE_FULL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                       </select>
                     </div>
+                    <select value={line.bedrooms ?? ''} onChange={e => updateLine(li, { bedrooms: e.target.value === '' ? null : Number(e.target.value) })} style={{ ...iS, fontSize: 11 }}>
+                      <option value=''>—</option>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
                     <input type="number" min={0} value={line.planned_count || ''} onChange={e => updateLine(li, { planned_count: Number(e.target.value) })} style={{ ...iS, fontSize: 11 }} placeholder="0" />
                     <input type="number" min={0} value={line.avg_size_sqm || ''} onChange={e => updateLine(li, { avg_size_sqm: Number(e.target.value) })} style={{ ...iS, fontSize: 11 }} placeholder="0" />
                     <input type="number" min={0} value={line.rate_per_sqm || ''} onChange={e => updateLine(li, { rate_per_sqm: Number(e.target.value) })} style={{ ...iS, fontSize: 11 }} placeholder="0" />
                     <span style={{ fontSize: 11, color: '#2c2420', fontWeight: 500 }}>{price > 0 ? `$${Math.round(price / 1000)}k` : '—'}</span>
-                    <span style={{ fontSize: 11, color: '#c0533a', fontWeight: 600 }}>{gr > 0 ? `$${(gr / 1_000_000).toFixed(2)}m` : '—'}</span>
+                    <span style={{ fontSize: 11, color: '#c0533a', fontWeight: 600 }}>{gr > 0 ? fmtGR(gr) : '—'}</span>
                     <button onClick={() => removeLine(li)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d4ccc5', padding: 0 }}><X size={12} /></button>
                   </div>
                 )
@@ -2040,12 +2145,13 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
                 </div>
               )}
               {addFeasoForm.lines.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 88px 96px 100px 100px 28px', gap: 6, marginTop: 6, paddingTop: 6, borderTop: '2px solid #e8e2dd' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px 60px 80px 88px 96px 100px 28px', gap: 6, marginTop: 6, paddingTop: 6, borderTop: '2px solid #e8e2dd' }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: '#2c2420' }}>Total</span>
+                  <span />
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#2c2420' }}>{addFeasoForm.lines.reduce((t, l) => t + (l.planned_count || 0), 0)}</span>
                   <span /><span /><span />
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#c0533a' }}>
-                    {(() => { const gr = addFeasoForm.lines.reduce((t, l) => t + (l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0), 0); return gr > 0 ? `$${(gr/1_000_000).toFixed(2)}m` : '—' })()}
+                    {(() => { const gr = addFeasoForm.lines.reduce((t, l) => t + (l.planned_count||0)*(l.avg_size_sqm||0)*(l.rate_per_sqm||0), 0); return gr > 0 ? fmtGR(gr) : '—' })()}
                   </span>
                   <span />
                 </div>
@@ -2058,13 +2164,10 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
               <textarea value={addFeasoForm.notes} onChange={e => setAddFeasoForm(f => ({ ...f, notes: e.target.value }))} placeholder="e.g. Based on current planning scheme, 40% cover…" style={{ ...iS, minHeight: 48, resize: 'vertical', fontSize: 11 }} />
             </div>
 
-            {das.length > 1 && !activeDaId && (
-              <p style={{ fontSize: 11, color: '#882010', marginBottom: 8 }}>Select a DA to attach this feasibility to.</p>
-            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => createFeasibility()}
-                disabled={creatingFeasibility || (das.length > 1 && !activeDaId) || !addFeasoForm.scenarioName.trim()}
+                disabled={creatingFeasibility || !addFeasoForm.scenarioName.trim()}
                 style={{ padding: '8px 18px', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#c0533a', color: '#fff', border: 'none', cursor: 'pointer', opacity: (creatingFeasibility || (das.length > 1 && !activeDaId) || !addFeasoForm.scenarioName.trim()) ? 0.4 : 1, fontFamily: 'var(--font-body)', boxShadow: '0 2px 6px rgba(192,83,58,0.20)' }}>
                 {creatingFeasibility ? 'Creating…' : 'Create feasibility'}
               </button>
@@ -2074,26 +2177,27 @@ function ProjectPlanningTab({ project }: { project: ProjectDetail }) {
         )
       })()}
 
-      {das.length > 0 && !isLoading && <DADashboard das={das} canManage={canManage} />}
+      {das.length > 0 && !isLoading && <DADashboard das={das} canManage={canManage} project={project} />}
 
-      {canManage && das.length > 0 && !isLoading && <FeasibilitySection das={das} onUpdated={onUpdated} />}
+      {canManage && !isLoading && <FeasibilitySection project={project} das={das} onUpdated={onUpdated} />}
+
+      {/* Project feasibility nudge */}
+      {canManage && !project.feasibility_committed && (project.feasibility?.scenarios ?? []).some((s: any) => s.lines?.length > 0) && das.some(da => ['approved', 'conditions_issued', 'operational_works'].includes(da.status)) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#eef7f0', borderRadius: 10, border: '1px solid #b8dfc3' }}>
+          <span style={{ fontSize: 16 }}>🎯</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#1a5c2e', margin: 0 }}>DA approved — ready to commit feasibility to project?</p>
+            <p style={{ fontSize: 11, color: '#237a3d', margin: '2px 0 0' }}>Use the Feasibility Scenarios section above to set lot count and target GR.</p>
+          </div>
+        </div>
+      )}
 
       {/* Nudge banners */}
       {canManage && das.flatMap(da => {
         const banners: React.ReactNode[] = []
         const allCondsDone = (da.conditions ?? []).length > 0 && (da.conditions ?? []).every(c => ['complete', 'waived'].includes(c.status))
         const occCertDone  = (da.milestones ?? []).some(m => m.milestone_type === 'occupation_cert' && m.actual_date)
-        if (['approved', 'conditions_issued'].includes(da.status) && !da.feasibility_committed && (da.feasibility?.scenarios ?? []).some((s: any) => s.lines?.length > 0)) {
-          banners.push(
-            <div key={`nudge-feaso-${da.id}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#eef7f0', borderRadius: 10, border: '1px solid #b8dfc3' }}>
-              <span style={{ fontSize: 16 }}>🎯</span>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: '#1a5c2e', margin: 0 }}>DA {da.reference_number || da.id.slice(0, 8)} approved — commit feasibility to project?</p>
-                <p style={{ fontSize: 11, color: '#237a3d', margin: '2px 0 0' }}>Use the Feasibility Scenarios section above to commit lot count and target GR.</p>
-              </div>
-            </div>
-          )
-        }
+        // Feasibility nudge now based on project, not DA — handled separately below
         if (allCondsDone && !occCertDone) {
           banners.push(
             <div key={`nudge-conds-${da.id}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#eef2fb', borderRadius: 10, border: '1px solid #c5d3f0' }}>

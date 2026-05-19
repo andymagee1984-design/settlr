@@ -43,10 +43,19 @@ class Project(OrgScopedModel):
     billing_status     = models.CharField(max_length=20, choices=BillingStatus.choices, default=BillingStatus.ACTIVE)
     amenities          = models.JSONField(default=list, blank=True)
 
-    # Feasibility — committed from DA module
-    target_gr          = models.DecimalField(
+    # Feasibility — project-level planning tool, independent of DA
+    feasibility              = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "Project feasibility: {scenarios: [{id, name, is_active, da_id, "
+            "notes, lines: [{lot_type, bedrooms, planned_count, avg_size_sqm, rate_per_sqm}]}]}"
+        ),
+    )
+    feasibility_committed    = models.BooleanField(default=False)
+    feasibility_committed_at = models.DateTimeField(null=True, blank=True)
+    target_gr                = models.DecimalField(
         max_digits=14, decimal_places=2, null=True, blank=True,
-        help_text="Target gross revenue committed from DA feasibility",
+        help_text="Target gross revenue committed from feasibility",
     )
 
     class Meta:
@@ -81,6 +90,54 @@ class Project(OrgScopedModel):
             self.billing_status   = self.BillingStatus.COMPLETED
             self.status           = self.Status.COMPLETED
             self.save(update_fields=["billing_end_date", "billing_status", "status"])
+
+    def get_feasibility_totals(self):
+        """Returns computed totals from the active scenario."""
+        scenarios = (self.feasibility or {}).get("scenarios", [])
+        active = next((s for s in scenarios if s.get("is_active")), scenarios[0] if scenarios else None)
+        lines  = active.get("lines", []) if active else []
+        total_lots = 0
+        total_gr   = 0
+        for line in lines:
+            count      = int(line.get("planned_count") or 0)
+            size       = float(line.get("avg_size_sqm") or 0)
+            rate       = float(line.get("rate_per_sqm") or 0)
+            total_lots += count
+            total_gr   += count * size * rate
+        return {"total_lots": total_lots, "total_gr": round(total_gr, 2)}
+
+    def get_all_scenario_totals(self):
+        """Returns totals for every scenario — used by comparison charts."""
+        scenarios = (self.feasibility or {}).get("scenarios", [])
+        result = []
+        for s in scenarios:
+            lines = s.get("lines", [])
+            total_lots = 0
+            total_gr   = 0
+            lot_type_breakdown = {}
+            for line in lines:
+                count = int(line.get("planned_count") or 0)
+                size  = float(line.get("avg_size_sqm") or 0)
+                rate  = float(line.get("rate_per_sqm") or 0)
+                gr    = count * size * rate
+                lt    = line.get("lot_type", "other")
+                total_lots += count
+                total_gr   += gr
+                if lt not in lot_type_breakdown:
+                    lot_type_breakdown[lt] = {"count": 0, "gr": 0, "rate": rate}
+                lot_type_breakdown[lt]["count"] += count
+                lot_type_breakdown[lt]["gr"]    += gr
+                lot_type_breakdown[lt]["rate"]   = rate
+            result.append({
+                "id":        s.get("id"),
+                "name":      s.get("name", "Unnamed"),
+                "is_active": s.get("is_active", False),
+                "da_id":     s.get("da_id"),
+                "total_lots": total_lots,
+                "total_gr":   round(total_gr, 2),
+                "breakdown":  lot_type_breakdown,
+            })
+        return result
 
 
 class ProjectMedia(TimeStampedModel):
@@ -339,14 +396,6 @@ class DevelopmentApplication(models.Model):
     owner                   = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_das")
     last_notified_at        = models.DateTimeField(null=True, blank=True)
 
-    # Feasibility
-    feasibility             = models.JSONField(
-        default=dict, blank=True,
-        help_text="Feasibility model: {lines: [{lot_type, planned_count, avg_size_sqm, rate_per_sqm}], notes: str}",
-    )
-    feasibility_committed   = models.BooleanField(default=False)
-    feasibility_committed_at = models.DateTimeField(null=True, blank=True)
-
     class Meta:
         ordering     = ["-created_at"]
         verbose_name = "Development Application"
@@ -371,57 +420,6 @@ class DevelopmentApplication(models.Model):
             return None
         from django.utils import timezone
         return (self.lapse_date - timezone.now().date()).days
-
-    def get_feasibility_totals(self):
-        """Returns computed totals from the active scenario."""
-        scenarios = (self.feasibility or {}).get("scenarios", [])
-        # Support legacy flat format too
-        if not scenarios:
-            lines = (self.feasibility or {}).get("lines", [])
-        else:
-            active = next((s for s in scenarios if s.get("is_active")), scenarios[0] if scenarios else None)
-            lines = active.get("lines", []) if active else []
-        total_lots = 0
-        total_gr   = 0
-        for line in lines:
-            count   = int(line.get("planned_count") or 0)
-            size    = float(line.get("avg_size_sqm") or 0)
-            rate    = float(line.get("rate_per_sqm") or 0)
-            total_lots += count
-            total_gr   += count * size * rate
-        return {"total_lots": total_lots, "total_gr": round(total_gr, 2)}
-
-    def get_all_scenario_totals(self):
-        """Returns totals for every scenario — used by the comparison charts."""
-        scenarios = (self.feasibility or {}).get("scenarios", [])
-        result = []
-        for s in scenarios:
-            lines = s.get("lines", [])
-            total_lots = 0
-            total_gr   = 0
-            lot_type_breakdown = {}
-            for line in lines:
-                count = int(line.get("planned_count") or 0)
-                size  = float(line.get("avg_size_sqm") or 0)
-                rate  = float(line.get("rate_per_sqm") or 0)
-                gr    = count * size * rate
-                lt    = line.get("lot_type", "other")
-                total_lots += count
-                total_gr   += gr
-                if lt not in lot_type_breakdown:
-                    lot_type_breakdown[lt] = {"count": 0, "gr": 0, "rate": rate}
-                lot_type_breakdown[lt]["count"] += count
-                lot_type_breakdown[lt]["gr"]    += gr
-                lot_type_breakdown[lt]["rate"]   = rate
-            result.append({
-                "id":        s.get("id"),
-                "name":      s.get("name", "Unnamed"),
-                "is_active": s.get("is_active", False),
-                "total_lots": total_lots,
-                "total_gr":   round(total_gr, 2),
-                "breakdown":  lot_type_breakdown,
-            })
-        return result
 
 
 class DACondition(models.Model):
